@@ -1,0 +1,141 @@
+[
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "offchainBlockIndex",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "readingId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "blockHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "payloadHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "anchoredBy",
+        "type": "address"
+      }
+    ],
+    "name": "ReadingAnchored",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "anchors",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "offchainBlockIndex",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "readingId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "payloadHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "blockHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "string",
+        "name": "deviceId",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "lettuceBedId",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "recordedAt",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "anchoredAt",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "anchoredBy",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "offchainBlockIndex",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "readingId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "payloadHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "blockHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "string",
+        "name": "deviceId",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "lettuceBedId",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "recordedAt",
+        "type": "string"
+      }
+    ],
+    "name": "anchorReading",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "name": "hydrigo-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.58.0",
+    "express": "^5.1.0",
+    "ioredis": "^5.8.1",
+    "pg": "^8.16.3"
+  }
+}

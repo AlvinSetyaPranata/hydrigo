@@ -1,0 +1,92 @@
+:root {
+  font-family:
+    "Plus Jakarta Sans",
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #274135;
+  background:
+    radial-gradient(circle at top left, #eef8d7 0%, transparent 28%),
+    radial-gradient(circle at right 20%, #cfe9d6 0%, transparent 24%),
+    linear-gradient(180deg, #f6f4eb 0%, #eef5ee 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --heading-color: #163328;
+  --muted: #647a6e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+#root {
+  width: min(1280px, calc(100% - 32px));
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--heading-color);
+  line-height: 1.08;
+}
+
+h1 {
+  font-size: clamp(2.5rem, 4vw, 4.8rem);
+  max-width: 10ch;
+  margin-bottom: 18px;
+}
+
+h2 {
+  font-size: clamp(1.4rem, 2vw, 2rem);
+}
+
+h3 {
+  font-size: 1.1rem;
+}
+
+p {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1024px) {
+  #root {
+    width: 100%;
+  }
+
+  h1 {
+    max-width: none;
+  }
+}

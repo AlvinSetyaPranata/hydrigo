@@ -1,0 +1,15 @@
+{
+  "name": "hydrigo-worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/start.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.58.0",
+    "ethers": "^6.15.0",
+    "ioredis": "^5.8.1",
+    "pg": "^8.16.3"
+  }
+}
