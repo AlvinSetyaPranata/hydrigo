@@ -18,6 +18,7 @@ const MAPPING = {
   'leaf.fill': 'eco',
   'paperplane.fill': 'send',
   'slider.horizontal.3': 'tune',
+  'link.circle.fill': 'token',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
 } as IconMapping;

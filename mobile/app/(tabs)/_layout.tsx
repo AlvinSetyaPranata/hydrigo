@@ -30,6 +30,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="slider.horizontal.3" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="blockchain"
+        options={{
+          title: 'Blockchain',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="link.circle.fill" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

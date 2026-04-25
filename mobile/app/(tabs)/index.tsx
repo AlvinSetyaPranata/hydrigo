@@ -58,10 +58,6 @@ export default function HomeScreen() {
           <Link href="/modal" style={styles.heroButton}>
             <ThemedText style={styles.heroButtonText}>Panduan cepat</ThemedText>
           </Link>
-          <View style={styles.heroSideCard}>
-            <ThemedText style={styles.heroSideLabel}>Batch utama</ThemedText>
-            <ThemedText style={styles.heroSideValue}>A3 / Butterhead</ThemedText>
-          </View>
         </View>
       </View>
 
@@ -246,12 +242,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   heroFooter: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'stretch',
+    marginTop: 2,
   },
   heroButton: {
-    flex: 1,
     justifyContent: 'center',
     backgroundColor: '#c9fb78',
     borderRadius: 18,
@@ -262,23 +255,6 @@ const styles = StyleSheet.create({
     color: '#17301a',
     fontWeight: '900',
     textAlign: 'center',
-  },
-  heroSideCard: {
-    width: 128,
-    borderRadius: 18,
-    padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  heroSideLabel: {
-    color: '#b7cfb5',
-    fontSize: 12,
-  },
-  heroSideValue: {
-    color: '#f7fff0',
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 22,
-    marginTop: 8,
   },
   sectionHeader: {
     gap: 4,
