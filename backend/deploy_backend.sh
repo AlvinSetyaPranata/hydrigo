@@ -31,7 +31,7 @@ if [[ ! -d "$VENV_DIR" ]]; then
 fi
 
 # shellcheck disable=SC1091
-source "$VENV_DIR/bin/activate"
+source "source $VENV_DIR/bin/activate"
 
 echo "Upgrading pip"
 python -m pip install --upgrade pip
