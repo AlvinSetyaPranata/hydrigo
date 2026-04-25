@@ -1,133 +1,305 @@
-import { Link } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { fetchDashboard, getApiBaseUrl, type DashboardData } from '@/lib/api';
+import { attachBrokerListeners, mqttTopics, subscribeTopic } from '@/lib/mqttClient';
 
-const sensorCards = [
-  { label: 'Suhu Air', value: '21.6 C', note: 'Akar stabil dan oksigen larut aman.', tone: 'good' },
-  { label: 'pH Larutan', value: '6.1', note: 'Tepat untuk serapan nutrisi selada.', tone: 'good' },
-  { label: 'EC Nutrisi', value: '1.4 mS/cm', note: 'Cukup untuk fase vegetatif aktif.', tone: 'good' },
-  { label: 'Kelembapan', value: '78%', note: 'Sedikit tinggi, exhaust dipacu otomatis.', tone: 'warn' },
-];
+const emptySnapshot = {
+  ph: '--',
+  waterTemp: '--',
+  humidity: '--',
+};
 
-const growthSteps = [
-  { title: 'Semai', age: 'Hari 1-7', detail: 'Kabut halus aktif dua kali sehari agar media tidak kering.' },
-  { title: 'Vegetatif', age: 'Hari 8-24', detail: 'Pertumbuhan daun dipacu dengan nutrisi stabil dan sirkulasi NFT penuh.' },
-  { title: 'Menjelang Panen', age: 'Hari 25-32', detail: 'Ukuran kepala dipadatkan sambil menjaga rasa tetap renyah dan ringan.' },
-];
+export default function DashboardScreen() {
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [brokerState, setBrokerState] = useState('Connecting');
+  const [sensorSnapshot, setSensorSnapshot] = useState(emptySnapshot);
 
-const alerts = [
-  'Tangki cadangan nutrisi tinggal 28%.',
-  'Kelembapan greenhouse di atas target selama 18 menit.',
-  'Pemeriksaan nozzle kabut dijadwalkan sore ini.',
-];
+  async function loadDashboard(isRefresh = false) {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
-export default function HomeScreen() {
+    try {
+      const nextDashboard = await fetchDashboard();
+      setDashboard(nextDashboard);
+      setSensorSnapshot(nextDashboard.sensorSnapshot ?? emptySnapshot);
+      setError('');
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : 'Gagal memuat dashboard.');
+    } finally {
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let cleanup = () => undefined;
+
+    try {
+      cleanup = attachBrokerListeners({
+        onConnect: () => setBrokerState('Connected'),
+        onReconnect: () => setBrokerState('Reconnecting'),
+        onClose: () => setBrokerState('Offline'),
+        onError: () => setBrokerState('Error'),
+      });
+
+      const unsubscribeSensor = subscribeTopic(mqttTopics.sensor, (message) => {
+        try {
+          const payload = JSON.parse(message) as Partial<typeof emptySnapshot>;
+          setSensorSnapshot((current) => ({
+            ph: payload.ph ?? current.ph,
+            waterTemp: payload.waterTemp ?? current.waterTemp,
+            humidity: payload.humidity ?? current.humidity,
+          }));
+        } catch {
+          setBrokerState('Payload Error');
+        }
+      });
+
+      const unsubscribeStatus = subscribeTopic(mqttTopics.status, (message) => {
+        try {
+          const payload = JSON.parse(message) as {
+            nutrientMode?: string;
+            controls?: DashboardData['manualControls'];
+          };
+
+          if (payload.nutrientMode) {
+            setDashboard((current) => (current ? { ...current, nutrientMode: payload.nutrientMode ?? current.nutrientMode } : current));
+          }
+
+          if (Array.isArray(payload.controls)) {
+            setDashboard((current) => (current ? { ...current, manualControls: payload.controls ?? current.manualControls } : current));
+          }
+        } catch {
+          setBrokerState('Payload Error');
+        }
+      });
+
+      return () => {
+        unsubscribeSensor();
+        unsubscribeStatus();
+        cleanup();
+      };
+    } catch (mqttError) {
+      setBrokerState('Unavailable');
+      setError((mqttError as Error).message);
+    }
+
+    return cleanup;
+  }, []);
+
+  const heroStats = [
+    dashboard?.heroStats?.[0] ?? { value: '-', label: 'rak selada aktif' },
+    { value: dashboard ? 'Connected' : 'Waiting', label: 'status backend api' },
+    { value: brokerState, label: 'status broker mqtt' },
+  ];
+
+  if (loading) {
+    return (
+      <View style={styles.stateScreen}>
+        <View style={styles.stateCard}>
+          <ActivityIndicator size="large" color="#8ed16d" />
+          <ThemedText type="subtitle" style={styles.stateTitle}>
+            Memuat dashboard Hydrigo
+          </ThemedText>
+          <ThemedText style={styles.stateBody}>Menghubungkan aplikasi mobile ke {getApiBaseUrl() ?? 'API Hydrigo'}.</ThemedText>
+        </View>
+      </View>
+    );
+  }
+
+  if (!dashboard) {
+    return (
+      <View style={styles.stateScreen}>
+        <View style={styles.stateCard}>
+          <ThemedText type="subtitle" style={styles.stateTitle}>
+            Backend belum merespons
+          </ThemedText>
+          <ThemedText style={styles.stateBody}>{error || 'Periksa API dashboard Hydrigo.'}</ThemedText>
+          <Pressable style={styles.retryButton} onPress={() => loadDashboard().catch(() => undefined)}>
+            <ThemedText style={styles.retryText}>Coba lagi</ThemedText>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadDashboard(true).catch(() => undefined)} />}>
       <View style={styles.heroShell}>
         <View style={styles.orbLarge} />
         <View style={styles.orbSmall} />
 
         <View style={styles.heroTopRow}>
           <View style={styles.eyebrowPill}>
-            <ThemedText style={styles.eyebrow}>Hydrigo</ThemedText>
+            <ThemedText style={styles.eyebrow}>Hydrigo Mobile</ThemedText>
           </View>
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
-            <ThemedText style={styles.liveText}>Live greenhouse</ThemedText>
+            <ThemedText style={styles.liveText}>API Connected</ThemedText>
           </View>
         </View>
+
+        <ThemedText type="title" style={styles.heroTitle}>
+          Monitoring khusus budidaya selada hidroponik.
+        </ThemedText>
+        <ThemedText style={styles.heroBody}>
+          Aplikasi mobile membaca payload dashboard yang sama dengan web, jadi operator lapangan melihat status yang konsisten.
+        </ThemedText>
 
         <View style={styles.heroStats}>
-          <View style={[styles.heroStat, styles.heroStatPrimary]}>
-            <ThemedText style={styles.heroStatValue}>324</ThemedText>
-            <ThemedText style={styles.heroStatLabel}>Lubang tanam aktif</ThemedText>
-          </View>
-          <View style={styles.heroStat}>
-            <ThemedText style={styles.heroStatValue}>94%</ThemedText>
-            <ThemedText style={styles.heroStatLabel}>Kesehatan batch</ThemedText>
-          </View>
-          <View style={styles.heroStat}>
-            <ThemedText style={styles.heroStatValue}>09:40</ThemedText>
-            <ThemedText style={styles.heroStatLabel}>Dosing berikutnya</ThemedText>
-          </View>
-        </View>
-
-        <View style={styles.heroFooter}>
-          <Link href="/modal" style={styles.heroButton}>
-            <ThemedText style={styles.heroButtonText}>Panduan cepat</ThemedText>
-          </Link>
+          {heroStats.map((item) => (
+            <View key={item.label} style={styles.heroStat}>
+              <ThemedText style={styles.heroStatValue}>{item.value}</ThemedText>
+              <ThemedText style={styles.heroStatLabel}>{item.label}</ThemedText>
+            </View>
+          ))}
         </View>
       </View>
 
-      <View style={styles.sectionHeader}>
-        <ThemedText type="subtitle" style={styles.sectionTitle}>
-          Sensor inti
-        </ThemedText>
-        <ThemedText style={styles.sectionCaption}>4 indikator utama yang paling mempengaruhi mutu selada.</ThemedText>
+      <View style={styles.snapshotCard}>
+        <View style={styles.sectionHeader}>
+          <ThemedText type="subtitle" style={styles.sectionTitle}>
+            Snapshot sensor
+          </ThemedText>
+          <ThemedText style={styles.sectionCaption}>Data dari backend dashboard</ThemedText>
+        </View>
+
+        <View style={styles.snapshotGrid}>
+          <View style={styles.snapshotItem}>
+            <ThemedText style={styles.snapshotLabel}>Kelembapan</ThemedText>
+            <ThemedText style={styles.snapshotValue}>{sensorSnapshot.humidity}</ThemedText>
+          </View>
+          <View style={styles.snapshotItem}>
+            <ThemedText style={styles.snapshotLabel}>pH larutan</ThemedText>
+            <ThemedText style={styles.snapshotValue}>{sensorSnapshot.ph}</ThemedText>
+          </View>
+          <View style={styles.snapshotItem}>
+            <ThemedText style={styles.snapshotLabel}>Suhu air</ThemedText>
+            <ThemedText style={styles.snapshotValue}>{sensorSnapshot.waterTemp}</ThemedText>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.grid}>
-        {sensorCards.map((card) => (
-          <View
-            key={card.label}
-            style={[styles.sensorCard, card.tone === 'warn' ? styles.sensorWarn : styles.sensorGood]}>
-            <View style={styles.sensorHead}>
-              <ThemedText style={styles.sensorLabel}>{card.label}</ThemedText>
-              <View style={[styles.sensorChip, card.tone === 'warn' ? styles.sensorChipWarn : styles.sensorChipGood]}>
-                <ThemedText style={styles.sensorChipText}>{card.tone === 'warn' ? 'Perlu cek' : 'Optimal'}</ThemedText>
+      <View style={styles.summaryGrid}>
+        {dashboard.summaryCards.map((card) => (
+          <View key={card.label} style={styles.summaryCard}>
+            <ThemedText style={styles.summaryLabel}>{card.label}</ThemedText>
+            <ThemedText style={styles.summaryValue}>{card.value}</ThemedText>
+            <ThemedText style={styles.summaryNote}>{card.note}</ThemedText>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.panel}>
+        <View style={styles.sectionHeader}>
+          <ThemedText type="subtitle" style={styles.sectionTitle}>
+            Rak selada
+          </ThemedText>
+          <ThemedText style={styles.sectionCaption}>{dashboard.lettuceBeds.length} varietas</ThemedText>
+        </View>
+
+        {dashboard.lettuceBeds.map((plant) => (
+          <View key={plant.name} style={styles.plantCard}>
+            <View style={styles.plantHead}>
+              <View style={styles.plantCopy}>
+                <ThemedText style={styles.plantTitle}>{plant.name}</ThemedText>
+                <ThemedText style={styles.plantMeta}>
+                  {plant.zone} • {plant.phase}
+                </ThemedText>
+              </View>
+              <View style={[styles.statusPill, plant.status === 'Perlu cek' ? styles.statusWarn : styles.statusGood]}>
+                <ThemedText style={styles.statusText}>{plant.status}</ThemedText>
               </View>
             </View>
-            <ThemedText style={styles.sensorValue}>{card.value}</ThemedText>
-            <View style={styles.sensorTrack}>
-              <View style={[styles.sensorTrackFill, card.tone === 'warn' ? styles.sensorTrackWarn : styles.sensorTrackGood]} />
-            </View>
-            <ThemedText style={styles.sensorNote}>{card.note}</ThemedText>
-          </View>
-        ))}
-      </View>
 
-      <View style={styles.timelineCard}>
-        <View style={styles.panelTop}>
-          <ThemedText type="subtitle" style={styles.panelTitle}>
-            Siklus tumbuh
-          </ThemedText>
-          <ThemedText style={styles.panelHint}>32 hari</ThemedText>
-        </View>
-        {growthSteps.map((step, index) => (
-          <View key={step.title} style={styles.timelineItem}>
-            <View style={styles.timelineRail}>
-              <View style={styles.timelineMarker}>
-                <ThemedText style={styles.timelineMarkerText}>{index + 1}</ThemedText>
+            <View style={styles.metricRow}>
+              <View style={styles.metricItem}>
+                <ThemedText style={styles.metricLabel}>Kelembapan</ThemedText>
+                <ThemedText style={styles.metricValue}>{plant.humidity}</ThemedText>
               </View>
-              {index < growthSteps.length - 1 ? <View style={styles.timelineLine} /> : null}
+              <View style={styles.metricItem}>
+                <ThemedText style={styles.metricLabel}>Suhu</ThemedText>
+                <ThemedText style={styles.metricValue}>{plant.temp}</ThemedText>
+              </View>
+              <View style={styles.metricItem}>
+                <ThemedText style={styles.metricLabel}>EC</ThemedText>
+                <ThemedText style={styles.metricValue}>{plant.ec}</ThemedText>
+              </View>
             </View>
-            <View style={styles.timelineContent}>
-              <ThemedText style={styles.timelineTitle}>{step.title}</ThemedText>
-              <ThemedText style={styles.timelineAge}>{step.age}</ThemedText>
-              <ThemedText style={styles.timelineDetail}>{step.detail}</ThemedText>
+
+            <View style={styles.healthRow}>
+              <ThemedText style={styles.healthLabel}>Skor kesehatan</ThemedText>
+              <View style={styles.healthTrack}>
+                <View style={[styles.healthFill, { width: `${plant.health}%` }]} />
+              </View>
+              <ThemedText style={styles.healthValue}>{plant.health}%</ThemedText>
             </View>
           </View>
         ))}
       </View>
 
-      <View style={styles.alertCard}>
-        <View style={styles.panelTop}>
-          <ThemedText type="subtitle" style={styles.panelTitle}>
-            Peringatan aktif
-          </ThemedText>
-          <ThemedText style={styles.panelHint}>3 item</ThemedText>
-        </View>
-        {alerts.map((item, index) => (
-          <View key={item} style={[styles.alertRow, index < alerts.length - 1 ? styles.alertRowBorder : null]}>
-            <View style={styles.alertBadge}>
-              <ThemedText style={styles.alertBadgeText}>{index + 1}</ThemedText>
-            </View>
-            <ThemedText style={styles.alertText}>{item}</ThemedText>
+      <View style={styles.dualPanel}>
+        <View style={[styles.panel, styles.flexPanel]}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle" style={styles.sectionTitle}>
+              Agenda hari ini
+            </ThemedText>
+            <ThemedText style={styles.sectionCaption}>Sinkron dari API</ThemedText>
           </View>
-        ))}
+          {dashboard.schedule.map((item) => (
+            <View key={item.task} style={styles.listRow}>
+              <View style={styles.listCopy}>
+                <ThemedText style={styles.listTitle}>{item.task}</ThemedText>
+                <ThemedText style={styles.listMeta}>{item.owner}</ThemedText>
+              </View>
+              <ThemedText style={styles.listBadge}>{item.due}</ThemedText>
+            </View>
+          ))}
+        </View>
+
+        <View style={[styles.panel, styles.flexPanel]}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle" style={styles.sectionTitle}>
+              Aktivitas terbaru
+            </ThemedText>
+            <ThemedText style={styles.sectionCaption}>Operasional greenhouse</ThemedText>
+          </View>
+          {dashboard.activities.map((item) => (
+            <View key={`${item.time}-${item.title}`} style={styles.activityRow}>
+              <ThemedText style={styles.activityTime}>{item.time}</ThemedText>
+              <View style={styles.activityCopy}>
+                <ThemedText style={styles.listTitle}>{item.title}</ThemedText>
+                <ThemedText style={styles.listMeta}>{item.detail}</ThemedText>
+              </View>
+            </View>
+          ))}
+        </View>
       </View>
+
+      {error ? (
+        <View style={styles.inlineError}>
+          <ThemedText style={styles.inlineErrorText}>{error}</ThemedText>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -142,6 +314,36 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     gap: 18,
   },
+  stateScreen: {
+    flex: 1,
+    backgroundColor: '#ecf2e6',
+    padding: 20,
+    justifyContent: 'center',
+  },
+  stateCard: {
+    borderRadius: 28,
+    padding: 24,
+    backgroundColor: '#102e18',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  stateTitle: {
+    color: '#f4ffe8',
+  },
+  stateBody: {
+    color: '#d7e8d3',
+  },
+  retryButton: {
+    marginTop: 4,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#b8f06a',
+  },
+  retryText: {
+    color: '#0f2816',
+    fontWeight: '800',
+  },
   heroShell: {
     position: 'relative',
     overflow: 'hidden',
@@ -149,11 +351,6 @@ const styles = StyleSheet.create({
     padding: 22,
     backgroundColor: '#102e18',
     gap: 16,
-    shadowColor: '#0f2816',
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
   },
   orbLarge: {
     position: 'absolute',
@@ -212,6 +409,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  heroTitle: {
+    color: '#ffffff',
+    lineHeight: 38,
+    maxWidth: 320,
+  },
+  heroBody: {
+    color: '#d7e8d3',
+    fontSize: 15,
+    lineHeight: 24,
+    maxWidth: 340,
+  },
   heroStats: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -226,228 +434,234 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
-  heroStatPrimary: {
-    backgroundColor: 'rgba(184,240,106,0.18)',
-    borderColor: 'rgba(184,240,106,0.35)',
-  },
   heroStatValue: {
     color: '#ffffff',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
   },
   heroStatLabel: {
     color: '#d7e8d3',
     fontSize: 12,
-    lineHeight: 18,
     marginTop: 4,
   },
-  heroFooter: {
-    marginTop: 2,
+  snapshotCard: {
+    borderRadius: 28,
+    padding: 18,
+    backgroundColor: '#f7fbf3',
+    gap: 14,
   },
-  heroButton: {
-    justifyContent: 'center',
-    backgroundColor: '#c9fb78',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  heroButtonText: {
-    color: '#17301a',
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  sectionHeader: {
-    gap: 4,
-  },
-  sectionTitle: {
-    color: '#163019',
-  },
-  sectionCaption: {
-    color: '#607260',
-    lineHeight: 21,
-  },
-  grid: {
+  snapshotGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
   },
-  sensorCard: {
-    width: '47%',
-    minWidth: 150,
-    borderRadius: 24,
-    padding: 16,
-    gap: 10,
-    borderWidth: 1,
-    shadowColor: '#48604a',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  sensorGood: {
-    backgroundColor: '#fcfff8',
-    borderColor: '#deebd6',
-  },
-  sensorWarn: {
-    backgroundColor: '#fffaf1',
-    borderColor: '#efd9af',
-  },
-  sensorHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-    alignItems: 'center',
-  },
-  sensorLabel: {
+  snapshotItem: {
     flex: 1,
+    minWidth: 92,
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: '#e9f4df',
+  },
+  snapshotLabel: {
+    color: '#5e725e',
     fontSize: 12,
-    color: '#5e6d5e',
-    fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
-  sensorChip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  sensorChipGood: {
-    backgroundColor: '#e5f5db',
-  },
-  sensorChipWarn: {
-    backgroundColor: '#fde8c1',
-  },
-  sensorChipText: {
-    fontSize: 11,
     fontWeight: '700',
-    color: '#335234',
   },
-  sensorValue: {
-    fontSize: 28,
-    lineHeight: 32,
-    fontWeight: '900',
+  snapshotValue: {
     color: '#17301a',
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '900',
+    marginTop: 10,
   },
-  sensorTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#edf2e9',
-    overflow: 'hidden',
-  },
-  sensorTrackFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  sensorTrackGood: {
-    width: '78%',
-    backgroundColor: '#72be64',
-  },
-  sensorTrackWarn: {
-    width: '64%',
-    backgroundColor: '#f0b454',
-  },
-  sensorNote: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#4e5e4f',
-  },
-  timelineCard: {
-    borderRadius: 28,
-    padding: 18,
-    backgroundColor: '#fdfefb',
-    gap: 10,
-  },
-  panelTop: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
   },
-  panelTitle: {
+  sectionTitle: {
     color: '#17301a',
   },
-  panelHint: {
-    color: '#6c7f6d',
+  sectionCaption: {
+    color: '#617161',
+    fontSize: 12,
+    textTransform: 'uppercase',
     fontWeight: '700',
   },
-  timelineItem: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'stretch',
+  summaryGrid: {
+    gap: 12,
   },
-  timelineRail: {
-    alignItems: 'center',
-    width: 32,
+  summaryCard: {
+    borderRadius: 24,
+    padding: 18,
+    backgroundColor: '#ffffff',
   },
-  timelineMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#2d7c38',
-    alignItems: 'center',
-    justifyContent: 'center',
+  summaryLabel: {
+    color: '#617161',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    fontWeight: '700',
   },
-  timelineMarkerText: {
-    color: '#ffffff',
+  summaryValue: {
+    color: '#17301a',
+    fontSize: 30,
+    lineHeight: 36,
     fontWeight: '900',
+    marginTop: 10,
   },
-  timelineLine: {
-    width: 2,
-    flex: 1,
-    backgroundColor: '#dbe8d5',
+  summaryNote: {
+    color: '#5a685a',
     marginTop: 8,
   },
-  timelineContent: {
-    flex: 1,
-    paddingBottom: 16,
-  },
-  timelineTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#17301a',
-  },
-  timelineAge: {
-    marginTop: 2,
-    color: '#2f7d32',
-    fontWeight: '800',
-  },
-  timelineDetail: {
-    marginTop: 4,
-    color: '#546756',
-    lineHeight: 22,
-  },
-  alertCard: {
+  panel: {
     borderRadius: 28,
     padding: 18,
-    backgroundColor: '#fdfefb',
-    gap: 8,
+    backgroundColor: '#ffffff',
+    gap: 14,
   },
-  alertRow: {
+  plantCard: {
+    borderRadius: 24,
+    padding: 16,
+    backgroundColor: '#f3f8ee',
+    gap: 14,
+  },
+  plantHead: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: 12,
-    alignItems: 'flex-start',
-    paddingVertical: 12,
   },
-  alertRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#e7eee2',
+  plantCopy: {
+    flex: 1,
+    gap: 4,
   },
-  alertBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#fee8bc',
-    alignItems: 'center',
-    justifyContent: 'center',
+  plantTitle: {
+    color: '#17301a',
+    fontSize: 18,
+    fontWeight: '800',
   },
-  alertBadgeText: {
-    color: '#7a5612',
-    fontWeight: '900',
+  plantMeta: {
+    color: '#607060',
+  },
+  statusPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  statusWarn: {
+    backgroundColor: '#f4dcc4',
+  },
+  statusGood: {
+    backgroundColor: '#ddefd1',
+  },
+  statusText: {
+    color: '#17301a',
+    fontWeight: '800',
     fontSize: 12,
   },
-  alertText: {
+  metricRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  metricItem: {
     flex: 1,
-    color: '#4f624f',
-    lineHeight: 22,
+    borderRadius: 18,
+    padding: 12,
+    backgroundColor: '#ffffff',
+  },
+  metricLabel: {
+    color: '#607060',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
+  metricValue: {
+    color: '#17301a',
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 8,
+  },
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  healthLabel: {
+    color: '#607060',
+    width: 88,
+    fontSize: 12,
+  },
+  healthTrack: {
+    flex: 1,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: '#d7e6cf',
+    overflow: 'hidden',
+  },
+  healthFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#4ea95b',
+  },
+  healthValue: {
+    color: '#17301a',
+    fontWeight: '900',
+    width: 44,
+    textAlign: 'right',
+  },
+  dualPanel: {
+    gap: 18,
+  },
+  flexPanel: {
+    flex: 1,
+  },
+  listRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#f6faf3',
+  },
+  listCopy: {
+    flex: 1,
+  },
+  listTitle: {
+    color: '#17301a',
+    fontWeight: '800',
+  },
+  listMeta: {
+    color: '#607060',
+    marginTop: 4,
+  },
+  listBadge: {
+    color: '#17301a',
+    fontWeight: '800',
+  },
+  activityRow: {
+    flexDirection: 'row',
+    gap: 14,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#f6faf3',
+  },
+  activityTime: {
+    width: 48,
+    color: '#2f7d32',
+    fontWeight: '900',
+  },
+  activityCopy: {
+    flex: 1,
+  },
+  inlineError: {
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#f7e5d8',
+  },
+  inlineErrorText: {
+    color: '#6d3520',
   },
 });

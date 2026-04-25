@@ -1,50 +1,47 @@
-# Welcome to your Expo app 👋
+# Hydrigo Mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expo Router mobile client for the Hydrigo dashboard and control flow.
 
-## Get started
+## What It Connects To
 
-1. Install dependencies
+- Dashboard and control API: `frontend/api/src/index.js` on port `3001`
+- Optional blockchain ledger API: Django backend on port `8000`
 
-   ```bash
-   npm install
-   ```
+## Environment
 
-2. Start the app
+Use `.env.example` as the starting point.
 
-   ```bash
-   npx expo start
-   ```
+For Android emulator, Expo can often detect the host automatically.
 
-In the output, you'll find options to open the app in a
+For a physical Android device, set:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```env
+EXPO_PUBLIC_API_BASE_URL=http://YOUR_LAPTOP_LAN_IP:3001
+EXPO_PUBLIC_LEDGER_API_BASE_URL=http://YOUR_LAPTOP_LAN_IP:8000
+EXPO_PUBLIC_MQTT_BROKER_URL=ws://YOUR_LAPTOP_LAN_IP/mqtt
+EXPO_PUBLIC_MQTT_USERNAME=
+EXPO_PUBLIC_MQTT_PASSWORD=
+EXPO_PUBLIC_MQTT_CLIENT_ID=hydrigo-mobile
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Do not use `localhost` on a physical phone. `localhost` there points to the phone itself, not your machine.
 
-## Learn more
+## Run
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npm install
+npx expo start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Lint
 
-## Join the community
+```bash
+npm run lint
+```
 
-Join our community of developers creating universal apps.
+## Tabs
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `Dashboard`: reads Hydrigo dashboard data from `/dashboard`
+- `Dashboard`: also subscribes to realtime sensor and status topics over MQTT
+- `Kontrol`: updates `/controls/manual` and `/controls/nutrient-mode`, then publishes to MQTT control topic
+- `Blockchain`: reads Django ledger data from `/api/v1/blockchain/chain`

@@ -1,0 +1,6 @@
+Django==5.2.13
+eth-account==0.13.7
+gunicorn==23.0.0
+py-solc-x==2.0.5
+requests==2.32.5
+web3==7.15.0

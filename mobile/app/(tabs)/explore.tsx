@@ -1,144 +1,271 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import {
+  fetchDashboard,
+  getApiBaseUrl,
+  updateManualControl,
+  updateNutrientMode,
+  type ManualControl,
+} from '@/lib/api';
+import { attachBrokerListeners, getBrokerUrl, mqttTopics, publishTopic, subscribeTopic } from '@/lib/mqttClient';
 
-const controls = [
-  {
-    title: 'Pompa nutrisi',
-    description: 'Mencampur larutan A/B secara terukur untuk menjaga EC selada tetap konsisten.',
-    status: true,
-    mode: 'Sensor EC',
-  },
-  {
-    title: 'Sirkulasi air NFT',
-    description: 'Menjaga aliran akar tetap tipis, dingin, dan kaya oksigen.',
-    status: true,
-    mode: '24 jam',
-  },
-  {
-    title: 'Lampu tanam',
-    description: 'Menyala saat intensitas cahaya pagi belum memenuhi target pertumbuhan daun.',
-    status: false,
-    mode: '06:00 - 18:00',
-  },
-  {
-    title: 'Kipas exhaust',
-    description: 'Mengurangi kelembapan tinggi agar risiko busuk pinggir daun turun.',
-    status: true,
-    mode: 'Trigger 75%',
-  },
-];
-
-const schedules = [
-  { time: '06:00', task: 'Lampu tanam aktif dan aliran utama diperiksa.' },
-  { time: '09:40', task: 'Dosing nutrisi 90 detik mengikuti hasil sensor EC.' },
-  { time: '13:00', task: 'Pendinginan otomatis jika suhu ruang di atas 28 C.' },
-  { time: '18:10', task: 'Flush aliran balik dan simpan log operasional.' },
-];
-
-const sopItems = [
-  'Pindah tanam hanya saat bibit sudah punya 2-3 daun sejati dan akar putih bersih.',
-  'Kenaikan EC dibuat bertahap karena selada mudah stres bila nutrisi melonjak tiba-tiba.',
-  'Air tangki dijaga tetap dingin untuk menjaga tekstur daun tetap renyah dan tidak pahit.',
-];
+const nutrientModes = ['Semai', 'Vegetatif', 'Finishing'];
 
 export default function ControlScreen() {
-  const [deviceControls, setDeviceControls] = useState(controls);
+  const [manualControls, setManualControls] = useState<ManualControl[]>([]);
+  const [nutrientMode, setNutrientModeState] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [savingControlId, setSavingControlId] = useState('');
+  const [savingMode, setSavingMode] = useState('');
+  const [error, setError] = useState('');
+  const [brokerState, setBrokerState] = useState('Connecting');
 
-  const toggleControl = (title: string) => {
-    setDeviceControls((current) =>
-      current.map((item) => (item.title === title ? { ...item, status: !item.status } : item))
+  async function loadControls(isRefresh = false) {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const dashboard = await fetchDashboard();
+      setManualControls(dashboard.manualControls ?? []);
+      setNutrientModeState(dashboard.nutrientMode ?? '');
+      setError('');
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : 'Gagal memuat data kontrol.');
+    } finally {
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    loadControls().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let cleanup = () => undefined;
+
+    try {
+      cleanup = attachBrokerListeners({
+        onConnect: () => setBrokerState('Connected'),
+        onReconnect: () => setBrokerState('Reconnecting'),
+        onClose: () => setBrokerState('Offline'),
+        onError: () => setBrokerState('Error'),
+      });
+
+      const unsubscribeStatus = subscribeTopic(mqttTopics.status, (message) => {
+        try {
+          const payload = JSON.parse(message) as {
+            nutrientMode?: string;
+            controls?: ManualControl[];
+          };
+
+          if (payload.nutrientMode) {
+            setNutrientModeState(payload.nutrientMode);
+          }
+
+          if (Array.isArray(payload.controls)) {
+            setManualControls(payload.controls);
+          }
+        } catch {
+          setBrokerState('Payload Error');
+        }
+      });
+
+      return () => {
+        unsubscribeStatus();
+        cleanup();
+      };
+    } catch (mqttError) {
+      setBrokerState('Unavailable');
+      setError((mqttError as Error).message);
+    }
+
+    return cleanup;
+  }, []);
+
+  async function handleToggleControl(control: ManualControl) {
+    const nextStatus = !control.status;
+    setSavingControlId(control.id);
+
+    try {
+      const nextControls = await updateManualControl(control.id, nextStatus);
+      setManualControls(nextControls);
+      publishTopic(mqttTopics.control, {
+        type: 'manual_control',
+        target: control.id,
+        value: nextStatus,
+      });
+      setError('');
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Gagal mengubah status kontrol.');
+    } finally {
+      setSavingControlId('');
+    }
+  }
+
+  async function handleUpdateMode(mode: string) {
+    setSavingMode(mode);
+
+    try {
+      const nextMode = await updateNutrientMode(mode);
+      setNutrientModeState(nextMode);
+      publishTopic(mqttTopics.control, {
+        type: 'nutrient_mode',
+        value: mode,
+      });
+      setError('');
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Gagal mengubah mode nutrisi.');
+    } finally {
+      setSavingMode('');
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.stateScreen}>
+        <View style={styles.stateCard}>
+          <ActivityIndicator size="large" color="#2f7d32" />
+          <ThemedText type="subtitle" style={styles.stateTitle}>
+            Memuat kontrol greenhouse
+          </ThemedText>
+          <ThemedText style={styles.stateBody}>Mengambil konfigurasi perangkat dari {getApiBaseUrl() ?? 'API Hydrigo'}.</ThemedText>
+        </View>
+      </View>
     );
-  };
+  }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadControls(true).catch(() => undefined)} />}>
       <View style={styles.hero}>
         <View style={styles.heroGlow} />
         <ThemedText style={styles.kicker}>Automation Center</ThemedText>
         <ThemedText type="title" style={styles.title}>
-          Kontrol perangkat yang bersih, cepat, dan spesifik untuk selada
+          Kontrol mobile yang langsung terhubung ke backend Hydrigo
         </ThemedText>
         <ThemedText style={styles.subtitle}>
-          Tidak ada preset tanaman lain. Threshold, jadwal, dan prioritas perangkat dibentuk hanya
-          untuk lettuce growth cycle.
+          Tab ini tidak lagi memakai state lokal. Semua perubahan switch dan mode nutrisi dikirim ke API yang sama dengan dashboard web.
         </ThemedText>
 
         <View style={styles.modeRow}>
           <View style={styles.modeCard}>
-            <ThemedText style={styles.modeLabel}>Mode sistem</ThemedText>
-            <ThemedText style={styles.modeValue}>AUTO TERKUNCI</ThemedText>
-          </View>
-          <View style={styles.modeBadge}>
-            <ThemedText style={styles.modeBadgeText}>Selada only</ThemedText>
-          </View>
+          <ThemedText style={styles.modeLabel}>Mode nutrisi aktif</ThemedText>
+          <ThemedText style={styles.modeValue}>{nutrientMode || '-'}</ThemedText>
         </View>
+        <View style={styles.modeBadge}>
+            <ThemedText style={styles.modeBadgeText}>{brokerState}</ThemedText>
+        </View>
+      </View>
       </View>
 
       <View style={styles.controlSection}>
         <View style={styles.sectionHeader}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Perangkat aktif
+            Kontrol manual
           </ThemedText>
-          <ThemedText style={styles.sectionHint}>4 node utama greenhouse</ThemedText>
+          <ThemedText style={styles.sectionHint}>Backend synced</ThemedText>
         </View>
 
-        {deviceControls.map((item) => (
-          <View key={item.title} style={styles.controlCard}>
-            <View style={styles.controlTop}>
-              <View style={styles.controlCopy}>
-                <ThemedText style={styles.controlTitle}>{item.title}</ThemedText>
-                <ThemedText style={styles.controlDesc}>{item.description}</ThemedText>
+        {manualControls.map((item) => {
+          const isSaving = savingControlId === item.id;
+
+          return (
+            <View key={item.id} style={styles.controlCard}>
+              <View style={styles.controlTop}>
+                <View style={styles.controlCopy}>
+                  <ThemedText style={styles.controlTitle}>{item.name}</ThemedText>
+                  <ThemedText style={styles.controlDesc}>{item.description}</ThemedText>
+                </View>
+                <View style={styles.switchWrap}>
+                  <ThemedText style={styles.switchState}>{isSaving ? '...' : item.status ? 'ON' : 'OFF'}</ThemedText>
+                  <Switch
+                    value={item.status}
+                    onValueChange={() => handleToggleControl(item).catch(() => undefined)}
+                    disabled={isSaving}
+                    trackColor={{ false: '#cad5c9', true: '#8ed16d' }}
+                    thumbColor={item.status ? '#ffffff' : '#f4f4f4'}
+                  />
+                </View>
               </View>
-              <View style={styles.switchWrap}>
-                <ThemedText style={styles.switchState}>{item.status ? 'ON' : 'OFF'}</ThemedText>
-                <Switch
-                  value={item.status}
-                  onValueChange={() => toggleControl(item.title)}
-                  trackColor={{ false: '#cad5c9', true: '#8ed16d' }}
-                  thumbColor={item.status ? '#ffffff' : '#f4f4f4'}
-                />
+              <View style={styles.metaRow}>
+                <View style={[styles.modePill, item.status ? styles.modePillOn : styles.modePillOff]}>
+                  <ThemedText style={styles.modePillText}>{item.status ? 'Aktif' : 'Nonaktif'}</ThemedText>
+                </View>
+                <View style={[styles.stateDot, item.status ? styles.stateOn : styles.stateOff]} />
               </View>
             </View>
-            <View style={styles.metaRow}>
-              <View style={styles.modePill}>
-                <ThemedText style={styles.modePillText}>{item.mode}</ThemedText>
-              </View>
-              <View style={[styles.stateDot, item.status ? styles.stateOn : styles.stateOff]} />
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <View style={styles.scheduleCard}>
         <View style={styles.sectionHeader}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Jadwal otomatis
+            Mode nutrisi
           </ThemedText>
-          <ThemedText style={styles.sectionHint}>Hari ini</ThemedText>
+          <ThemedText style={styles.sectionHint}>POST /controls/nutrient-mode</ThemedText>
         </View>
-        {schedules.map((item) => (
-          <View key={item.time} style={styles.scheduleRow}>
-            <View style={styles.timeBlock}>
-              <ThemedText style={styles.scheduleTime}>{item.time}</ThemedText>
-            </View>
-            <ThemedText style={styles.scheduleTask}>{item.task}</ThemedText>
-          </View>
-        ))}
+
+        <View style={styles.modeGrid}>
+          {nutrientModes.map((mode) => {
+            const selected = nutrientMode === mode;
+            const isSaving = savingMode === mode;
+
+            return (
+              <Pressable
+                key={mode}
+                style={[styles.modeOption, selected ? styles.modeOptionSelected : null]}
+                onPress={() => handleUpdateMode(mode).catch(() => undefined)}
+                disabled={Boolean(savingMode)}>
+                <ThemedText style={[styles.modeOptionText, selected ? styles.modeOptionTextSelected : null]}>
+                  {isSaving ? 'Menyimpan...' : mode}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <View style={styles.sopCard}>
         <ThemedText type="subtitle" style={styles.sopTitle}>
-          SOP selada
+          Catatan integrasi
         </ThemedText>
-        {sopItems.map((item) => (
-          <View key={item} style={styles.sopRow}>
-            <View style={styles.sopIndex} />
-            <ThemedText style={styles.sopText}>{item}</ThemedText>
-          </View>
-        ))}
+        <View style={styles.sopRow}>
+          <View style={styles.sopIndex} />
+          <ThemedText style={styles.sopText}>Dashboard dan mobile memakai endpoint dasar yang sama.</ThemedText>
+        </View>
+        <View style={styles.sopRow}>
+          <View style={styles.sopIndex} />
+          <ThemedText style={styles.sopText}>Untuk Android fisik, isi `EXPO_PUBLIC_API_BASE_URL` jika host Expo tidak bisa dideteksi.</ThemedText>
+        </View>
+        <View style={styles.sopRow}>
+          <View style={styles.sopIndex} />
+          <ThemedText style={styles.sopText}>Broker MQTT aktif: {getBrokerUrl() ?? 'belum terset'}</ThemedText>
+        </View>
+        <View style={styles.sopRow}>
+          <View style={styles.sopIndex} />
+          <ThemedText style={styles.sopText}>Base URL aktif: {getApiBaseUrl() ?? 'belum terset'}</ThemedText>
+        </View>
       </View>
+
+      {error ? (
+        <View style={styles.errorCard}>
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -152,6 +279,24 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 36,
     gap: 18,
+  },
+  stateScreen: {
+    flex: 1,
+    backgroundColor: '#ecf2e6',
+    padding: 20,
+    justifyContent: 'center',
+  },
+  stateCard: {
+    borderRadius: 28,
+    padding: 24,
+    backgroundColor: '#fdfefb',
+    gap: 12,
+  },
+  stateTitle: {
+    color: '#17301a',
+  },
+  stateBody: {
+    color: '#546756',
   },
   hero: {
     position: 'relative',
@@ -180,7 +325,7 @@ const styles = StyleSheet.create({
   title: {
     color: '#17301a',
     lineHeight: 38,
-    maxWidth: 300,
+    maxWidth: 320,
   },
   subtitle: {
     color: '#546756',
@@ -238,49 +383,45 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionTitle: {
-    color: '#17301a',
+    color: '#f3faec',
   },
   sectionHint: {
-    color: '#718571',
+    color: '#b9d5b8',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   controlCard: {
-    borderRadius: 22,
-    padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    gap: 12,
+    borderRadius: 24,
+    padding: 16,
+    backgroundColor: '#f6fbf2',
+    gap: 14,
   },
   controlTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
     alignItems: 'flex-start',
+    gap: 12,
+  },
+  controlCopy: {
+    flex: 1,
+  },
+  controlTitle: {
+    color: '#17301a',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  controlDesc: {
+    color: '#5a6c5b',
+    marginTop: 4,
   },
   switchWrap: {
     alignItems: 'center',
     gap: 6,
   },
   switchState: {
-    color: '#f6ffed',
-    fontSize: 11,
+    color: '#17301a',
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  controlCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  controlTitle: {
-    color: '#f6ffed',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  controlDesc: {
-    color: '#ccdfcf',
-    lineHeight: 21,
   },
   metaRow: {
     flexDirection: 'row',
@@ -288,16 +429,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modePill: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(201,251,120,0.18)',
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  modePillOn: {
+    backgroundColor: '#d7efc9',
+  },
+  modePillOff: {
+    backgroundColor: '#e7ebe3',
+  },
   modePillText: {
-    color: '#d9f3b4',
-    fontSize: 12,
+    color: '#17301a',
     fontWeight: '800',
+    fontSize: 12,
   },
   stateDot: {
     width: 12,
@@ -305,43 +450,43 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   stateOn: {
-    backgroundColor: '#9ee66d',
+    backgroundColor: '#2f7d32',
   },
   stateOff: {
-    backgroundColor: '#d5dacf',
+    backgroundColor: '#acb6aa',
   },
   scheduleCard: {
     borderRadius: 28,
     padding: 18,
-    backgroundColor: '#fdfefb',
-    gap: 12,
+    backgroundColor: '#ffffff',
+    gap: 14,
   },
-  scheduleRow: {
+  modeGrid: {
     flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  timeBlock: {
-    width: 72,
-    borderRadius: 16,
+  modeOption: {
+    borderRadius: 999,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#eff7e8',
-    alignItems: 'center',
+    backgroundColor: '#eef4e8',
   },
-  scheduleTime: {
-    color: '#2f7d32',
-    fontWeight: '900',
+  modeOptionSelected: {
+    backgroundColor: '#17301a',
   },
-  scheduleTask: {
-    flex: 1,
-    color: '#526652',
-    lineHeight: 22,
+  modeOptionText: {
+    color: '#17301a',
+    fontWeight: '800',
+  },
+  modeOptionTextSelected: {
+    color: '#f5fff0',
   },
   sopCard: {
     borderRadius: 28,
     padding: 18,
-    backgroundColor: '#d8f0b2',
-    gap: 12,
+    backgroundColor: '#ffffff',
+    gap: 14,
   },
   sopTitle: {
     color: '#17301a',
@@ -352,15 +497,22 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   sopIndex: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginTop: 6,
-    backgroundColor: '#2f7d32',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#8ed16d',
+    marginTop: 8,
   },
   sopText: {
     flex: 1,
-    color: '#2d4b30',
-    lineHeight: 22,
+    color: '#546756',
+  },
+  errorCard: {
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#f7e5d8',
+  },
+  errorText: {
+    color: '#6d3520',
   },
 });

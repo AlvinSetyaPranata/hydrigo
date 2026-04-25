@@ -27,6 +27,47 @@ Lalu nyalakan server Django:
 
 Server akan berjalan di `http://127.0.0.1:8000`.
 
+## Deployment Script
+
+Untuk deploy backend Django dengan Gunicorn:
+
+```bash
+cd backend
+./deploy_backend.sh
+```
+
+Script ini akan:
+
+- membuat virtualenv di `backend/.venv` bila belum ada
+- install dependency produksi dari `requirements-prod.txt`
+- menjalankan migrasi Django
+- menjalankan `manage.py check`
+- start Gunicorn untuk `config.wsgi:application`
+
+Environment variable yang bisa diatur:
+
+```bash
+HYDRIGO_HOST=0.0.0.0
+HYDRIGO_PORT=8000
+HYDRIGO_WORKERS=2
+HYDRIGO_TIMEOUT=120
+VENV_DIR=/path/to/venv
+PYTHON_BIN=python3
+REQUIREMENTS_FILE=/path/to/requirements.txt
+```
+
+Jika file `backend/.env` ada, script akan memuatnya sebelum proses deploy.
+
+## Production Requirements
+
+Untuk deploy server, gunakan `requirements-prod.txt`. File ini sengaja lebih kecil dari `requirements.txt` dan hanya memuat dependency yang benar-benar dipakai oleh:
+
+- Django app
+- Gunicorn
+- helper Ethereum anchor/deploy contract
+
+`requirements.txt` saat ini berisi banyak package lain yang tidak dibutuhkan untuk menjalankan backend ini di production.
+
 ## Endpoint
 
 ### Health check

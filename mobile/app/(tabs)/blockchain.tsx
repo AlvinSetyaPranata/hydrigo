@@ -1,215 +1,210 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { fetchLedgerChain, getLedgerBaseUrl, type LedgerBlock, type LedgerVerification } from '@/lib/api';
 
-type BlockItem = {
-  id: string;
-  title: string;
-  hash: string;
-  detail: string;
-  timestamp: string;
-  status: 'Confirmed' | 'Pending';
-};
+function shortHash(value: string) {
+  if (value.length <= 16) {
+    return value;
+  }
 
-const initialBlocks: BlockItem[] = [
-  {
-    id: '#2048',
-    title: 'Sensor snapshot',
-    hash: '0x8fa2...be19',
-    detail: 'Menyimpan suhu air, pH, EC, dan kelembapan blok tanam.',
-    timestamp: '08:15',
-    status: 'Confirmed',
-  },
-  {
-    id: '#2049',
-    title: 'Actuator event',
-    hash: '0x3cc7...90ad',
-    detail: 'Perubahan status pompa nutrisi dan kipas exhaust tercatat permanen.',
-    timestamp: '09:40',
-    status: 'Confirmed',
-  },
-  {
-    id: '#2050',
-    title: 'Harvest audit',
-    hash: '0xf51a...3d44',
-    detail: 'Jejak mutu batch selada dikunci untuk verifikasi distribusi.',
-    timestamp: '11:02',
-    status: 'Pending',
-  },
-];
+  return `${value.slice(0, 10)}...${value.slice(-8)}`;
+}
 
-const ledgerItems = [
-  'Data sensor dikirim tiap 15 menit ke ledger privat.',
-  'Setiap perubahan perangkat menghasilkan hash audit baru.',
-  'Riwayat panen dapat diverifikasi tanpa mengubah catatan lama.',
-];
+function formatTimestamp(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export default function BlockchainScreen() {
-  const [network, setNetwork] = useState<'Private Chain' | 'Testnet'>('Private Chain');
-  const [syncPercent, setSyncPercent] = useState(99.98);
-  const [contractActive, setContractActive] = useState(true);
-  const [blocks, setBlocks] = useState(initialBlocks);
-  const [selectedBlockId, setSelectedBlockId] = useState(initialBlocks[0].id);
+  const [blocks, setBlocks] = useState<LedgerBlock[]>([]);
+  const [verification, setVerification] = useState<LedgerVerification | null>(null);
+  const [selectedBlockIndex, setSelectedBlockIndex] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
-  const selectedBlock = blocks.find((block) => block.id === selectedBlockId) ?? blocks[0];
+  async function loadChain(isRefresh = false) {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
-  const handleSync = () => {
-    setSyncPercent((current) => Number(Math.min(100, current + 0.01).toFixed(2)));
-    setBlocks((current) =>
-      current.map((block, index) =>
-        index === 0 ? { ...block, status: 'Confirmed', timestamp: 'Baru saja' } : block
-      )
+    try {
+      const result = await fetchLedgerChain();
+      const nextBlocks = [...result.blocks].reverse();
+
+      setBlocks(nextBlocks);
+      setVerification(result.verification);
+      setSelectedBlockIndex((current) => current ?? nextBlocks[0]?.block_index ?? null);
+      setError('');
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : 'Gagal memuat ledger blockchain.');
+    } finally {
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    loadChain().catch(() => undefined);
+  }, []);
+
+  const selectedBlock = useMemo(
+    () => blocks.find((block) => block.block_index === selectedBlockIndex) ?? blocks[0] ?? null,
+    [blocks, selectedBlockIndex],
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.stateScreen}>
+        <View style={styles.stateCard}>
+          <ActivityIndicator size="large" color="#8ed16d" />
+          <ThemedText type="subtitle" style={styles.stateTitle}>
+            Memuat ledger blockchain
+          </ThemedText>
+          <ThemedText style={styles.stateBody}>Mengambil chain dari {getLedgerBaseUrl() ?? 'backend ledger Hydrigo'}.</ThemedText>
+        </View>
+      </View>
     );
-  };
-
-  const handleAddBlock = () => {
-    const latestId = Number(blocks[0].id.replace('#', ''));
-    const nextId = `#${latestId + 1}`;
-    const nextBlock: BlockItem = {
-      id: nextId,
-      title: 'Control commit',
-      hash: `0x${Math.random().toString(16).slice(2, 6)}...${Math.random().toString(16).slice(2, 6)}`,
-      detail: 'Event baru dari perubahan node kontrol berhasil masuk ke ledger.',
-      timestamp: 'Sekarang',
-      status: 'Pending',
-    };
-
-    setBlocks((current) => [nextBlock, ...current]);
-    setSelectedBlockId(nextId);
-  };
-
-  const handleToggleNetwork = () => {
-    setNetwork((current) => (current === 'Private Chain' ? 'Testnet' : 'Private Chain'));
-    setSyncPercent((current) => (current === 100 ? 99.91 : 100));
-  };
-
-  const handleToggleContract = () => {
-    setContractActive((current) => !current);
-  };
-
-  const nodes = [
-    { label: 'Validator greenhouse', value: 'Online' },
-    { label: 'Sinkronisasi block', value: `${syncPercent.toFixed(2)}%` },
-    { label: 'Smart contract', value: contractActive ? 'Active' : 'Paused' },
-  ];
+  }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadChain(true).catch(() => undefined)} />}>
       <View style={styles.hero}>
         <View style={styles.heroGlow} />
         <ThemedText style={styles.kicker}>Hydrigo Chain</ThemedText>
         <ThemedText type="title" style={styles.title}>
-          Jejak data greenhouse di sistem blockchain
+          Jejak ledger yang dibaca langsung dari backend
         </ThemedText>
         <ThemedText style={styles.subtitle}>
-          Catat data sensor, kontrol perangkat, dan audit hasil selada dalam ledger yang tidak mudah diubah.
+          Tab ini tidak lagi memakai block dummy. Jika Django ledger aktif, mobile menampilkan block hash-chain asli beserta status verifikasinya.
         </ThemedText>
 
-        <View style={styles.actionRow}>
-          <Pressable style={[styles.actionButton, styles.actionButtonPrimary]} onPress={handleSync}>
-            <ThemedText style={styles.actionButtonPrimaryText}>Sinkronkan</ThemedText>
-          </Pressable>
-          <Pressable style={styles.actionButton} onPress={handleAddBlock}>
-            <ThemedText style={styles.actionButtonText}>Tambah block</ThemedText>
-          </Pressable>
-        </View>
-
         <View style={styles.nodeGrid}>
-          {nodes.map((item) => (
-            <View key={item.label} style={styles.nodeCard}>
-              <ThemedText style={styles.nodeLabel}>{item.label}</ThemedText>
-              <ThemedText style={styles.nodeValue}>{item.value}</ThemedText>
-            </View>
-          ))}
+          <View style={styles.nodeCard}>
+            <ThemedText style={styles.nodeLabel}>Jumlah block</ThemedText>
+            <ThemedText style={styles.nodeValue}>{blocks.length}</ThemedText>
+          </View>
+          <View style={styles.nodeCard}>
+            <ThemedText style={styles.nodeLabel}>Validasi chain</ThemedText>
+            <ThemedText style={styles.nodeValue}>{verification?.valid ? 'Valid' : 'Perlu cek'}</ThemedText>
+          </View>
+          <View style={styles.nodeCard}>
+            <ThemedText style={styles.nodeLabel}>Ledger API</ThemedText>
+            <ThemedText style={styles.nodeValue}>{getLedgerBaseUrl() ? 'Resolved' : 'Unset'}</ThemedText>
+          </View>
         </View>
       </View>
 
-      <View style={styles.controlPanel}>
-        <View style={styles.panelItem}>
-          <ThemedText style={styles.panelLabel}>Network aktif</ThemedText>
-          <ThemedText style={styles.panelValue}>{network}</ThemedText>
+      {selectedBlock ? (
+        <View style={styles.detailCard}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle" style={styles.sectionTitle}>
+              Detail transaksi
+            </ThemedText>
+            <ThemedText style={styles.sectionHint}>Block #{selectedBlock.block_index}</ThemedText>
+          </View>
+
+          <View style={styles.detailRow}>
+            <ThemedText style={styles.detailLabel}>Device</ThemedText>
+            <ThemedText style={styles.detailValue}>{selectedBlock.device_id}</ThemedText>
+          </View>
+          <View style={styles.detailRow}>
+            <ThemedText style={styles.detailLabel}>Bed</ThemedText>
+            <ThemedText style={styles.detailValue}>{selectedBlock.lettuce_bed_id}</ThemedText>
+          </View>
+          <View style={styles.detailRow}>
+            <ThemedText style={styles.detailLabel}>Transaction</ThemedText>
+            <ThemedText style={styles.detailValue}>{selectedBlock.transaction_id}</ThemedText>
+          </View>
+          <View style={styles.detailRow}>
+            <ThemedText style={styles.detailLabel}>Hash block</ThemedText>
+            <ThemedText style={styles.detailValue}>{selectedBlock.block_hash}</ThemedText>
+          </View>
+          <View style={styles.detailRow}>
+            <ThemedText style={styles.detailLabel}>Payload hash</ThemedText>
+            <ThemedText style={styles.detailValue}>{selectedBlock.payload_hash}</ThemedText>
+          </View>
+          <View style={styles.detailRow}>
+            <ThemedText style={styles.detailLabel}>Waktu</ThemedText>
+            <ThemedText style={styles.detailValue}>{formatTimestamp(selectedBlock.created_at)}</ThemedText>
+          </View>
         </View>
-        <Pressable style={styles.panelButton} onPress={handleToggleNetwork}>
-          <ThemedText style={styles.panelButtonText}>Ganti network</ThemedText>
-        </Pressable>
-        <Pressable style={styles.panelButton} onPress={handleToggleContract}>
-          <ThemedText style={styles.panelButtonText}>
-            {contractActive ? 'Pause contract' : 'Aktifkan contract'}
-          </ThemedText>
-        </Pressable>
-      </View>
+      ) : null}
 
       <View style={styles.chainCard}>
         <View style={styles.sectionHeader}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
             Block terbaru
           </ThemedText>
-          <ThemedText style={styles.sectionHint}>{blocks.length} records</ThemedText>
-        </View>
-        {blocks.map((block, index) => (
-          <Pressable
-            key={block.id}
-            style={[
-              styles.blockRow,
-              index < blocks.length - 1 ? styles.blockBorder : null,
-              selectedBlockId === block.id ? styles.blockRowActive : null,
-            ]}
-            onPress={() => setSelectedBlockId(block.id)}>
-            <View style={styles.blockIdWrap}>
-              <ThemedText style={styles.blockId}>{block.id}</ThemedText>
-            </View>
-            <View style={styles.blockContent}>
-              <View style={styles.blockTop}>
-                <ThemedText style={styles.blockTitle}>{block.title}</ThemedText>
-                <ThemedText style={styles.blockTime}>{block.timestamp}</ThemedText>
-              </View>
-              <ThemedText style={styles.blockHash}>{block.hash}</ThemedText>
-              <ThemedText style={styles.blockDetail}>{block.detail}</ThemedText>
-              <View style={[styles.statusPill, block.status === 'Confirmed' ? styles.statusConfirmed : styles.statusPending]}>
-                <ThemedText style={styles.statusPillText}>{block.status}</ThemedText>
-              </View>
-            </View>
-          </Pressable>
-        ))}
-      </View>
-
-      <View style={styles.detailCard}>
-        <View style={styles.sectionHeader}>
-          <ThemedText type="subtitle" style={styles.detailTitle}>
-            Detail transaksi
+          <ThemedText style={styles.sectionHint}>
+            {verification?.valid ? 'Chain tervalidasi' : verification?.reason || 'Belum ada data'}
           </ThemedText>
-          <ThemedText style={styles.detailHint}>{selectedBlock.id}</ThemedText>
         </View>
-        <View style={styles.detailRow}>
-          <ThemedText style={styles.detailLabel}>Jenis</ThemedText>
-          <ThemedText style={styles.detailValue}>{selectedBlock.title}</ThemedText>
-        </View>
-        <View style={styles.detailRow}>
-          <ThemedText style={styles.detailLabel}>Hash</ThemedText>
-          <ThemedText style={styles.detailValue}>{selectedBlock.hash}</ThemedText>
-        </View>
-        <View style={styles.detailRow}>
-          <ThemedText style={styles.detailLabel}>Status</ThemedText>
-          <ThemedText style={styles.detailValue}>{selectedBlock.status}</ThemedText>
-        </View>
-        <View style={styles.detailRow}>
-          <ThemedText style={styles.detailLabel}>Keterangan</ThemedText>
-          <ThemedText style={styles.detailValue}>{selectedBlock.detail}</ThemedText>
-        </View>
+
+        {blocks.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <ThemedText style={styles.emptyTitle}>Ledger belum tersedia</ThemedText>
+            <ThemedText style={styles.emptyBody}>
+              Jalankan Django backend atau isi `EXPO_PUBLIC_LEDGER_API_BASE_URL` agar tab blockchain bisa mengambil data nyata.
+            </ThemedText>
+          </View>
+        ) : (
+          blocks.map((block, index) => (
+            <Pressable
+              key={block.block_index}
+              style={[
+                styles.blockRow,
+                index < blocks.length - 1 ? styles.blockBorder : null,
+                selectedBlockIndex === block.block_index ? styles.blockRowActive : null,
+              ]}
+              onPress={() => setSelectedBlockIndex(block.block_index)}>
+              <View style={styles.blockIdWrap}>
+                <ThemedText style={styles.blockId}>#{block.block_index}</ThemedText>
+              </View>
+              <View style={styles.blockContent}>
+                <View style={styles.blockTop}>
+                  <ThemedText style={styles.blockTitle}>{block.device_id}</ThemedText>
+                  <ThemedText style={styles.blockTime}>{formatTimestamp(block.created_at)}</ThemedText>
+                </View>
+                <ThemedText style={styles.blockHash}>{shortHash(block.block_hash)}</ThemedText>
+                <ThemedText style={styles.blockDetail}>
+                  Bed {block.lettuce_bed_id} • Tx {block.transaction_id}
+                </ThemedText>
+                <View style={[styles.statusPill, verification?.valid ? styles.statusConfirmed : styles.statusPending]}>
+                  <ThemedText style={styles.statusPillText}>{verification?.valid ? 'Confirmed' : 'Check chain'}</ThemedText>
+                </View>
+              </View>
+            </Pressable>
+          ))
+        )}
       </View>
 
-      <View style={styles.ledgerCard}>
-        <ThemedText type="subtitle" style={styles.ledgerTitle}>
-          Fungsi ledger
-        </ThemedText>
-        {ledgerItems.map((item) => (
-          <View key={item} style={styles.ledgerRow}>
-            <View style={styles.ledgerDot} />
-            <ThemedText style={styles.ledgerText}>{item}</ThemedText>
-          </View>
-        ))}
-      </View>
+      {error ? (
+        <View style={styles.errorCard}>
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -223,6 +218,24 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 36,
     gap: 18,
+  },
+  stateScreen: {
+    flex: 1,
+    backgroundColor: '#ecf2e6',
+    padding: 20,
+    justifyContent: 'center',
+  },
+  stateCard: {
+    borderRadius: 28,
+    padding: 24,
+    backgroundColor: '#0f1724',
+    gap: 12,
+  },
+  stateTitle: {
+    color: '#f3f7ff',
+  },
+  stateBody: {
+    color: '#bfd1ee',
   },
   hero: {
     position: 'relative',
@@ -239,115 +252,57 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: 'rgba(71, 168, 255, 0.18)',
+    backgroundColor: 'rgba(104, 151, 255, 0.18)',
   },
   kicker: {
-    color: '#97d4ff',
+    color: '#8bb0ff',
     textTransform: 'uppercase',
     fontWeight: '800',
     letterSpacing: 1,
     fontSize: 12,
   },
   title: {
-    color: '#f5f9ff',
+    color: '#f5f7fb',
     lineHeight: 38,
-    maxWidth: 310,
+    maxWidth: 320,
   },
   subtitle: {
-    color: '#c9d4e5',
+    color: '#bfd1ee',
     lineHeight: 24,
     fontSize: 15,
     maxWidth: 340,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
-  },
-  actionButton: {
-    flex: 1,
-    borderRadius: 16,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  actionButtonPrimary: {
-    backgroundColor: '#56b6ff',
-    borderColor: '#56b6ff',
-  },
-  actionButtonText: {
-    color: '#f4f8ff',
-    fontWeight: '800',
-  },
-  actionButtonPrimaryText: {
-    color: '#0f1724',
-    fontWeight: '900',
   },
   nodeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    marginTop: 6,
+    marginTop: 4,
   },
   nodeCard: {
     flex: 1,
     minWidth: 96,
     borderRadius: 20,
     padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   nodeLabel: {
-    color: '#a8b8cf',
+    color: '#bfd1ee',
     fontSize: 12,
-    lineHeight: 18,
-  },
-  nodeValue: {
-    color: '#ffffff',
-    fontSize: 19,
-    fontWeight: '900',
-    marginTop: 6,
-  },
-  controlPanel: {
-    borderRadius: 28,
-    padding: 18,
-    backgroundColor: '#fdfefb',
-    gap: 12,
-  },
-  panelItem: {
-    gap: 4,
-  },
-  panelLabel: {
-    color: '#60776a',
-    fontSize: 13,
     textTransform: 'uppercase',
     fontWeight: '700',
   },
-  panelValue: {
-    color: '#17301a',
+  nodeValue: {
+    color: '#ffffff',
     fontSize: 22,
+    lineHeight: 28,
     fontWeight: '900',
+    marginTop: 6,
   },
-  panelButton: {
-    borderRadius: 16,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    backgroundColor: '#edf4ff',
-  },
-  panelButtonText: {
-    color: '#2356a8',
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  chainCard: {
+  detailCard: {
     borderRadius: 28,
     padding: 18,
-    backgroundColor: '#fdfefb',
-    gap: 10,
+    backgroundColor: '#ffffff',
+    gap: 14,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -356,42 +311,72 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionTitle: {
-    color: '#17301a',
+    color: '#172033',
   },
   sectionHint: {
-    color: '#718571',
+    color: '#5f6c85',
     fontSize: 12,
     fontWeight: '700',
   },
+  detailRow: {
+    gap: 4,
+  },
+  detailLabel: {
+    color: '#5f6c85',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
+  detailValue: {
+    color: '#172033',
+    fontWeight: '700',
+  },
+  chainCard: {
+    borderRadius: 28,
+    padding: 18,
+    backgroundColor: '#ffffff',
+    gap: 8,
+  },
+  emptyCard: {
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: '#eff4fb',
+    gap: 8,
+  },
+  emptyTitle: {
+    color: '#172033',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  emptyBody: {
+    color: '#5f6c85',
+  },
   blockRow: {
     flexDirection: 'row',
-    gap: 12,
-    paddingVertical: 12,
-    alignItems: 'flex-start',
-    borderRadius: 18,
-  },
-  blockRowActive: {
-    backgroundColor: '#f1f7ff',
-    paddingHorizontal: 10,
+    gap: 14,
+    paddingVertical: 14,
   },
   blockBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#e5ece0',
+    borderBottomColor: '#edf1f6',
+  },
+  blockRowActive: {
+    backgroundColor: '#f6f9fe',
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
+    borderRadius: 16,
   },
   blockIdWrap: {
-    borderRadius: 14,
-    backgroundColor: '#e9f2ff',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    width: 54,
+    alignItems: 'center',
   },
   blockId: {
-    color: '#2356a8',
+    color: '#4c6cb8',
     fontWeight: '900',
-    fontSize: 12,
   },
   blockContent: {
     flex: 1,
-    gap: 4,
+    gap: 6,
   },
   blockTop: {
     flexDirection: 'row',
@@ -399,92 +384,43 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   blockTitle: {
-    color: '#17301a',
-    fontSize: 17,
+    color: '#172033',
     fontWeight: '800',
   },
   blockTime: {
-    color: '#7087a7',
+    color: '#5f6c85',
     fontSize: 12,
-    fontWeight: '700',
   },
   blockHash: {
-    color: '#2356a8',
-    fontSize: 13,
+    color: '#3150a2',
     fontWeight: '700',
   },
   blockDetail: {
-    color: '#526652',
-    lineHeight: 22,
+    color: '#5f6c85',
   },
   statusPill: {
     alignSelf: 'flex-start',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    marginTop: 4,
   },
   statusConfirmed: {
-    backgroundColor: '#dff3de',
+    backgroundColor: '#dce9ff',
   },
   statusPending: {
-    backgroundColor: '#ffe9c7',
+    backgroundColor: '#f4dfc4',
   },
   statusPillText: {
-    color: '#37563e',
+    color: '#172033',
     fontSize: 12,
     fontWeight: '800',
   },
-  detailCard: {
-    borderRadius: 28,
-    padding: 18,
-    backgroundColor: '#fdfefb',
-    gap: 12,
+  errorCard: {
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#f7e5d8',
   },
-  detailTitle: {
-    color: '#17301a',
-  },
-  detailHint: {
-    color: '#2356a8',
-    fontWeight: '800',
-  },
-  detailRow: {
-    gap: 4,
-  },
-  detailLabel: {
-    color: '#60776a',
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  detailValue: {
-    color: '#17301a',
-    lineHeight: 22,
-  },
-  ledgerCard: {
-    borderRadius: 28,
-    padding: 18,
-    backgroundColor: '#dcecff',
-    gap: 12,
-  },
-  ledgerTitle: {
-    color: '#112947',
-  },
-  ledgerRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-  ledgerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 8,
-    backgroundColor: '#3478d8',
-  },
-  ledgerText: {
-    flex: 1,
-    color: '#28476f',
-    lineHeight: 22,
+  errorText: {
+    color: '#6d3520',
   },
 });
