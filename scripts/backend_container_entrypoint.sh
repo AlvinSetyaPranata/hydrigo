@@ -4,6 +4,10 @@ set -eu
 
 cd /app
 
+if [ "${ETH_CONTRACT_ADDRESS:-}" = "0xYOUR_CONTRACT_ADDRESS" ]; then
+  unset ETH_CONTRACT_ADDRESS
+fi
+
 if [ -z "${ETH_CONTRACT_ADDRESS:-}" ] && [ -n "${CONTRACT_DEPLOYMENT_FILE:-}" ]; then
   WAIT_SECONDS="${CONTRACT_DEPLOYMENT_WAIT_SECONDS:-90}"
   i=0

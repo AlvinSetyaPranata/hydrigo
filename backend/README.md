@@ -82,7 +82,7 @@ Deploy path saat ini ditujukan untuk research/self-hosted mode:
 
 - private EVM chain dijalankan lokal via Docker
 - contract `HydrigoAnchor` dideploy otomatis ke chain itu
-- backend membaca artifact deploy dan memakai contract address tersebut bila `ETH_CONTRACT_ADDRESS` belum diisi manual
+- backend membaca artifact deploy dan memakai contract address tersebut bila `ETH_CONTRACT_ADDRESS` kosong
 
 ## Endpoint
 
