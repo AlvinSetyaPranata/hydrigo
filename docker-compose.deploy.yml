@@ -1,4 +1,48 @@
 services:
+  chain:
+    image: ghcr.io/foundry-rs/foundry:stable
+    container_name: hydrigo-chain
+    command:
+      - anvil
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8545"
+      - --chain-id
+      - "31337"
+      - --mnemonic
+      - test test test test test test test test test test test junk
+    ports:
+      - "${CHAIN_PORT:-8545}:8545"
+    restart: unless-stopped
+
+  contract-deployer:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: hydrigo-contract-deployer
+    env_file:
+      - ./backend/.env
+    environment:
+      ETH_RPC_URL: http://chain:8545
+      ETH_CHAIN_ID: 31337
+      CONTRACT_DEPLOYMENT_FILE: /shared/deployments/HydrigoAnchor.deploy.json
+    depends_on:
+      - chain
+    command:
+      - sh
+      - -lc
+      - >
+        until python deploy_contract.py; do
+          echo "Retrying contract deployment";
+          sleep 3;
+        done &&
+        mkdir -p /shared/deployments &&
+        cp build/HydrigoAnchor.deploy.json /shared/deployments/HydrigoAnchor.deploy.json
+    volumes:
+      - hydrigo_shared_deployments:/shared/deployments
+    restart: "no"
+
   backend:
     build:
       context: .
@@ -7,14 +51,22 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      ETH_RPC_URL: http://chain:8545
+      ETH_CHAIN_ID: 31337
       HYDRIGO_PORT: ${HYDRIGO_PORT:-8000}
       HYDRIGO_WORKERS: ${HYDRIGO_WORKERS:-2}
       HYDRIGO_TIMEOUT: ${HYDRIGO_TIMEOUT:-120}
       HYDRIGO_SQLITE_PATH: /data/db.sqlite3
+      CONTRACT_DEPLOYMENT_FILE: /shared/deployments/HydrigoAnchor.deploy.json
+      CONTRACT_DEPLOYMENT_WAIT_SECONDS: ${CONTRACT_DEPLOYMENT_WAIT_SECONDS:-90}
+    depends_on:
+      - chain
+      - contract-deployer
     ports:
       - "${HYDRIGO_PORT:-8000}:8000"
     volumes:
       - hydrigo_backend_data:/data
+      - hydrigo_shared_deployments:/shared/deployments:ro
     restart: unless-stopped
 
   mosquitto:
@@ -33,3 +85,4 @@ volumes:
   hydrigo_backend_data:
   hydrigo_mosquitto_data:
   hydrigo_mosquitto_log:
+  hydrigo_shared_deployments:

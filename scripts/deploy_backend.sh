@@ -19,7 +19,7 @@ if [[ ! -f "$BACKEND_ENV_FILE" ]]; then
 fi
 
 echo "Deploying Dockerized backend"
-docker compose -f "$COMPOSE_FILE" up -d --build backend
+docker compose -f "$COMPOSE_FILE" up -d --build chain contract-deployer backend
 
 echo "Backend container deployed"
-docker compose -f "$COMPOSE_FILE" ps backend
+docker compose -f "$COMPOSE_FILE" ps chain contract-deployer backend

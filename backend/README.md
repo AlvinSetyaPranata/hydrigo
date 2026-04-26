@@ -38,7 +38,7 @@ Untuk deploy backend Django via Docker:
 Script ini akan:
 
 - build image backend
-- start container backend dari `docker-compose.deploy.yml`
+- start private chain, contract deployer, dan container backend dari `docker-compose.deploy.yml`
 - menjalankan migrasi Django saat container start
 - menjalankan `manage.py check`
 - start Gunicorn untuk `config.wsgi:application`
@@ -56,6 +56,8 @@ HYDRIGO_PORT=8000
 HYDRIGO_WORKERS=2
 HYDRIGO_TIMEOUT=120
 HYDRIGO_SQLITE_PATH=/data/db.sqlite3
+ETH_RPC_URL=http://chain:8545
+ETH_CHAIN_ID=31337
 ```
 
 Untuk deploy gabungan backend + MQTT broker tanpa frontend container:
@@ -73,6 +75,14 @@ Image backend memakai `requirements-prod.txt`. File ini sengaja lebih kecil dari
 - helper Ethereum anchor/deploy contract
 
 `requirements.txt` saat ini berisi banyak package lain yang tidak dibutuhkan untuk menjalankan backend ini di production.
+
+## Research Stack
+
+Deploy path saat ini ditujukan untuk research/self-hosted mode:
+
+- private EVM chain dijalankan lokal via Docker
+- contract `HydrigoAnchor` dideploy otomatis ke chain itu
+- backend membaca artifact deploy dan memakai contract address tersebut bila `ETH_CONTRACT_ADDRESS` belum diisi manual
 
 ## Endpoint
 
