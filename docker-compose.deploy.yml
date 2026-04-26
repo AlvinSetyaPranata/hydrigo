@@ -43,6 +43,8 @@ services:
     volumes:
       - hydrigo_shared_deployments:/shared/deployments
     restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   backend:
     build:
