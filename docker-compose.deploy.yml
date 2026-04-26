@@ -26,6 +26,7 @@ services:
     environment:
       ETH_RPC_URL: http://chain:8545
       ETH_CHAIN_ID: 31337
+      POSTGRES_HOST: ${POSTGRES_HOST:-host.docker.internal}
       CONTRACT_DEPLOYMENT_FILE: /shared/deployments/HydrigoAnchor.deploy.json
     depends_on:
       - chain
@@ -67,6 +68,8 @@ services:
     depends_on:
       - chain
       - contract-deployer
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - hydrigo_shared_deployments:/shared/deployments:ro
     restart: unless-stopped

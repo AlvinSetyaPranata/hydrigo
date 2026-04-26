@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+const VPS_BASE_URL = 'http://109.110.188.181';
+
 type SummaryCard = {
   label: string;
   value: string;
@@ -138,7 +140,7 @@ export function getApiBaseUrl() {
     return trimTrailingSlash(configured.trim());
   }
 
-  return makeLocalUrl(3001);
+  return VPS_BASE_URL;
 }
 
 export function getLedgerBaseUrl() {
@@ -148,7 +150,7 @@ export function getLedgerBaseUrl() {
     return trimTrailingSlash(configured.trim());
   }
 
-  return makeLocalUrl(8000);
+  return VPS_BASE_URL;
 }
 
 function buildUrl(baseUrl: string | null, path: string) {
