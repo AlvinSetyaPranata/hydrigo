@@ -62,11 +62,21 @@ services:
     depends_on:
       - chain
       - contract-deployer
-    ports:
-      - "${HYDRIGO_PORT:-8000}:8000"
     volumes:
       - hydrigo_backend_data:/data
       - hydrigo_shared_deployments:/shared/deployments:ro
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: hydrigo-nginx
+    depends_on:
+      - backend
+      - mosquitto
+    ports:
+      - "${APP_PORT:-80}:80"
+    volumes:
+      - ./docker/nginx/research.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
 
   mosquitto:
@@ -74,7 +84,6 @@ services:
     container_name: hydrigo-mosquitto
     ports:
       - "${MQTT_PORT:-1883}:1883"
-      - "${MQTT_WS_PORT:-9001}:9001"
     volumes:
       - ./frontend/docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - hydrigo_mosquitto_data:/mosquitto/data

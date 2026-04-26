@@ -38,7 +38,7 @@ Untuk deploy backend Django via Docker:
 Script ini akan:
 
 - build image backend
-- start private chain, contract deployer, dan container backend dari `docker-compose.deploy.yml`
+- start private chain, contract deployer, backend, dan nginx gateway dari `docker-compose.deploy.yml`
 - menjalankan migrasi Django saat container start
 - menjalankan `manage.py check`
 - start Gunicorn untuk `config.wsgi:application`
@@ -83,6 +83,8 @@ Deploy path saat ini ditujukan untuk research/self-hosted mode:
 - private EVM chain dijalankan lokal via Docker
 - contract `HydrigoAnchor` dideploy otomatis ke chain itu
 - backend membaca artifact deploy dan memakai contract address tersebut bila `ETH_CONTRACT_ADDRESS` kosong
+- nginx menjadi entrypoint tunggal untuk HTTP dan MQTT WebSocket
+- MQTT TCP tetap tersedia langsung di port `1883`
 
 ## Endpoint
 

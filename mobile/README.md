@@ -5,7 +5,7 @@ Expo Router mobile client for the Hydrigo dashboard and control flow.
 ## What It Connects To
 
 - Dashboard and control API: `frontend/api/src/index.js` on port `3001`
-- Optional blockchain ledger API: Django backend on port `8000`
+- Optional blockchain ledger API: Django backend via Nginx on port `80`
 
 ## Environment
 
@@ -16,9 +16,9 @@ For Android emulator, Expo can often detect the host automatically.
 For a physical Android device, set:
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=http://YOUR_LAPTOP_LAN_IP:3001
-EXPO_PUBLIC_LEDGER_API_BASE_URL=http://YOUR_LAPTOP_LAN_IP:8000
-EXPO_PUBLIC_MQTT_BROKER_URL=ws://YOUR_LAPTOP_LAN_IP:9001
+EXPO_PUBLIC_API_BASE_URL=http://YOUR_LAPTOP_LAN_IP
+EXPO_PUBLIC_LEDGER_API_BASE_URL=http://YOUR_LAPTOP_LAN_IP
+EXPO_PUBLIC_MQTT_BROKER_URL=ws://YOUR_LAPTOP_LAN_IP/mqtt
 EXPO_PUBLIC_MQTT_USERNAME=
 EXPO_PUBLIC_MQTT_PASSWORD=
 EXPO_PUBLIC_MQTT_CLIENT_ID=hydrigo-mobile

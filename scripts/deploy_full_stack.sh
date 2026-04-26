@@ -25,8 +25,8 @@ deploy_backend() {
 }
 
 deploy_mqtt() {
-  echo "Deploying MQTT broker"
-  docker compose -f "$COMPOSE_FILE" up -d mosquitto
+  echo "Deploying MQTT broker and nginx gateway"
+  docker compose -f "$COMPOSE_FILE" up -d mosquitto nginx
 }
 
 echo "Hydrigo full deployment started"

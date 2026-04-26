@@ -107,7 +107,7 @@ Repo-level deployment entrypoint:
 This script:
 
 - deploys Django backend through `scripts/deploy_backend.sh`
-- deploys the Dockerized backend and MQTT broker through `docker-compose.deploy.yml`
+- deploys the Dockerized backend, nginx gateway, and MQTT broker through `docker-compose.deploy.yml`
 
 Useful toggles:
 
