@@ -64,7 +64,7 @@ services:
       POSTGRES_USER: hydrigo
       POSTGRES_PASSWORD: password
       POSTGRES_HOST: host.docker.internal
-      POSTGRES_PORT: 5432
+      POSTGRES_PORT: 5433
       CONTRACT_DEPLOYMENT_FILE: /shared/deployments/HydrigoAnchor.deploy.json
       CONTRACT_DEPLOYMENT_WAIT_SECONDS: ${CONTRACT_DEPLOYMENT_WAIT_SECONDS:-90}
     depends_on:
