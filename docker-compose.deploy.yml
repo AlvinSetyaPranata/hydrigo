@@ -53,17 +53,21 @@ services:
     environment:
       ETH_RPC_URL: http://chain:8545
       ETH_CHAIN_ID: 31337
+      HYDRIGO_DB_ENGINE: postgres
       HYDRIGO_PORT: ${HYDRIGO_PORT:-8000}
       HYDRIGO_WORKERS: ${HYDRIGO_WORKERS:-2}
       HYDRIGO_TIMEOUT: ${HYDRIGO_TIMEOUT:-120}
-      HYDRIGO_SQLITE_PATH: /data/db.sqlite3
+      POSTGRES_DB: ${POSTGRES_DB:-hydrigo}
+      POSTGRES_USER: ${POSTGRES_USER:-hydrigo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_HOST: ${POSTGRES_HOST:-YOUR_POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       CONTRACT_DEPLOYMENT_FILE: /shared/deployments/HydrigoAnchor.deploy.json
       CONTRACT_DEPLOYMENT_WAIT_SECONDS: ${CONTRACT_DEPLOYMENT_WAIT_SECONDS:-90}
     depends_on:
       - chain
       - contract-deployer
     volumes:
-      - hydrigo_backend_data:/data
       - hydrigo_shared_deployments:/shared/deployments:ro
     restart: unless-stopped
 
@@ -91,7 +95,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  hydrigo_backend_data:
   hydrigo_mosquitto_data:
   hydrigo_mosquitto_log:
   hydrigo_shared_deployments:

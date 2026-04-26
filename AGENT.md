@@ -107,7 +107,8 @@ Repo-level deployment entrypoint:
 This script:
 
 - deploys Django backend through `scripts/deploy_backend.sh`
-- deploys the Dockerized backend, nginx gateway, and MQTT broker through `docker-compose.deploy.yml`
+- deploys the Dockerized backend, nginx gateway, MQTT broker, and private chain through `docker-compose.deploy.yml`
+- assumes PostgreSQL is provided externally, not by this compose stack
 
 Useful toggles:
 
