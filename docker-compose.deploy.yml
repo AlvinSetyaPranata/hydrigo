@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: hydrigo-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      HYDRIGO_PORT: ${HYDRIGO_PORT:-8000}
+      HYDRIGO_WORKERS: ${HYDRIGO_WORKERS:-2}
+      HYDRIGO_TIMEOUT: ${HYDRIGO_TIMEOUT:-120}
+      HYDRIGO_SQLITE_PATH: /data/db.sqlite3
+    ports:
+      - "${HYDRIGO_PORT:-8000}:8000"
+    volumes:
+      - hydrigo_backend_data:/data
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: hydrigo-mosquitto
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+      - "${MQTT_WS_PORT:-9001}:9001"
+    volumes:
+      - ./frontend/docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - hydrigo_mosquitto_data:/mosquitto/data
+      - hydrigo_mosquitto_log:/mosquitto/log
+    restart: unless-stopped
+
+volumes:
+  hydrigo_backend_data:
+  hydrigo_mosquitto_data:
+  hydrigo_mosquitto_log:

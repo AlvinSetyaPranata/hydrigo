@@ -29,38 +29,44 @@ Server akan berjalan di `http://127.0.0.1:8000`.
 
 ## Deployment Script
 
-Untuk deploy backend Django dengan Gunicorn:
+Untuk deploy backend Django via Docker:
 
 ```bash
-cd backend
-./deploy_backend.sh
+./scripts/deploy_backend.sh
 ```
 
 Script ini akan:
 
-- membuat virtualenv di `backend/.venv` bila belum ada
-- install dependency produksi dari `requirements-prod.txt`
-- menjalankan migrasi Django
+- build image backend
+- start container backend dari `docker-compose.deploy.yml`
+- menjalankan migrasi Django saat container start
 - menjalankan `manage.py check`
 - start Gunicorn untuk `config.wsgi:application`
 
-Environment variable yang bisa diatur:
+Prasyarat:
 
 ```bash
-HYDRIGO_HOST=0.0.0.0
+cp backend/.env.example backend/.env
+```
+
+Environment variable yang dipakai container:
+
+```bash
 HYDRIGO_PORT=8000
 HYDRIGO_WORKERS=2
 HYDRIGO_TIMEOUT=120
-VENV_DIR=/path/to/venv
-PYTHON_BIN=python3
-REQUIREMENTS_FILE=/path/to/requirements.txt
+HYDRIGO_SQLITE_PATH=/data/db.sqlite3
 ```
 
-Jika file `backend/.env` ada, script akan memuatnya sebelum proses deploy.
+Untuk deploy gabungan backend + MQTT broker tanpa frontend container:
+
+```bash
+./scripts/deploy_full_stack.sh
+```
 
 ## Production Requirements
 
-Untuk deploy server, gunakan `requirements-prod.txt`. File ini sengaja lebih kecil dari `requirements.txt` dan hanya memuat dependency yang benar-benar dipakai oleh:
+Image backend memakai `requirements-prod.txt`. File ini sengaja lebih kecil dari `requirements.txt` dan hanya memuat dependency yang benar-benar dipakai oleh:
 
 - Django app
 - Gunicorn

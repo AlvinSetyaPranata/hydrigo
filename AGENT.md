@@ -96,6 +96,26 @@ cd backend
 
 Status: passes as of April 25, 2026.
 
+### Full Deployment
+
+Repo-level deployment entrypoint:
+
+```bash
+./scripts/deploy_full_stack.sh
+```
+
+This script:
+
+- deploys Django backend through `scripts/deploy_backend.sh`
+- deploys the Dockerized backend and MQTT broker through `docker-compose.deploy.yml`
+
+Useful toggles:
+
+```bash
+DEPLOY_BACKEND=0 ./scripts/deploy_full_stack.sh
+DEPLOY_MQTT=0 ./scripts/deploy_full_stack.sh
+```
+
 ### Frontend
 
 Install dependencies:
