@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
-from .models import DripProfile, DripSchedule
+from .models import DripProfile, DripSchedule, DripSensorReading
 
 
 DEFAULT_ZONES = [
@@ -103,6 +103,21 @@ def serialize_schedule(schedule: DripSchedule) -> dict[str, object]:
     }
 
 
+def serialize_reading(reading: DripSensorReading) -> dict[str, object]:
+    return {
+        "deviceId": reading.device_id,
+        "zoneId": reading.zone_id,
+        "soilMoisture": reading.soil_moisture_pct,
+        "temperature": reading.temperature_c,
+        "airHumidity": reading.humidity_pct,
+        "lightIntensity": reading.light_lux,
+        "aiScore": reading.ai_score,
+        "pumpOn": reading.pump_on,
+        "recordedAt": reading.recorded_at.isoformat(),
+        "receivedAt": reading.received_at.isoformat(),
+    }
+
+
 def ensure_seed_data() -> None:
     if not DripProfile.objects.exists():
         DripProfile.objects.create(**default_profile_values())
@@ -146,6 +161,30 @@ def format_days(values: list[str]) -> str:
     return ", ".join(DAY_LABELS[item] for item in values if item in DAY_LABELS)
 
 
+def apply_latest_readings_to_zones():
+    zones = [dict(zone) for zone in DEFAULT_ZONES]
+
+    for zone in zones:
+        latest = DripSensorReading.objects.filter(zone_id=zone["id"]).first()
+        if latest is None:
+            continue
+
+        zone["moisture"] = round(latest.soil_moisture_pct, 1)
+        zone["temperature"] = round(latest.temperature_c, 1)
+        zone["airHumidity"] = round(latest.humidity_pct, 1)
+        zone["lightIntensity"] = round(latest.light_lux, 1)
+        zone["initialValveOn"] = latest.pump_on
+
+        if latest.soil_moisture_pct <= 40:
+            zone["status"] = "critical"
+        elif latest.soil_moisture_pct <= 55:
+            zone["status"] = "warning"
+        else:
+            zone["status"] = "optimal"
+
+    return zones
+
+
 @require_GET
 def health_view(request):
     ensure_seed_data()
@@ -155,18 +194,19 @@ def health_view(request):
 @require_GET
 def farm_summary_view(request):
     ensure_seed_data()
-    active_zones = sum(1 for zone in DEFAULT_ZONES if zone["initialValveOn"])
+    zones = apply_latest_readings_to_zones()
+    active_zones = sum(1 for zone in zones if zone["initialValveOn"])
     return JsonResponse(
         {
             "lastUpdated": timezone.now().isoformat(),
             "stats": {
-                "soilMoisture": round(sum(zone["moisture"] for zone in DEFAULT_ZONES) / len(DEFAULT_ZONES)),
-                "temperature": round(sum(zone["temperature"] for zone in DEFAULT_ZONES) / len(DEFAULT_ZONES)),
-                "lightIntensity": round(sum(zone["lightIntensity"] for zone in DEFAULT_ZONES) / len(DEFAULT_ZONES)),
+                "soilMoisture": round(sum(zone["moisture"] for zone in zones) / len(zones)),
+                "temperature": round(sum(zone["temperature"] for zone in zones) / len(zones)),
+                "lightIntensity": round(sum(zone["lightIntensity"] for zone in zones) / len(zones)),
                 "waterTank": 78,
                 "activeZones": active_zones,
             },
-            "zones": DEFAULT_ZONES,
+            "zones": zones,
         }
     )
 
@@ -290,6 +330,69 @@ def history_view(request):
                 "label": datetime(year, month, 1).strftime("%b %Y"),
             },
         }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def iot_readings_view(request):
+    ensure_seed_data()
+
+    if request.method == "GET":
+        try:
+            limit = int(request.GET.get("limit", "20"))
+        except ValueError:
+            return JsonResponse({"message": "limit harus integer"}, status=400)
+        limit = max(1, min(limit, 100))
+        rows = DripSensorReading.objects.all()[:limit]
+        return JsonResponse({"data": [serialize_reading(item) for item in rows], "limit": limit})
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"message": "body harus JSON valid"}, status=400)
+
+    device_id = str(body.get("device_id", "")).strip()
+    zone_id = str(body.get("zone_id", "")).strip()
+
+    if not device_id:
+        return JsonResponse({"message": "device_id wajib diisi"}, status=400)
+    if resolve_zone(zone_id) is None:
+        return JsonResponse({"message": "zone_id tidak dikenal"}, status=400)
+
+    try:
+        soil_moisture_pct = float(body.get("soil_moisture_pct"))
+        temperature_c = float(body.get("temperature_c"))
+        humidity_pct = float(body.get("humidity_pct"))
+        light_lux = float(body.get("light_lux"))
+        ai_score = float(body.get("ai_score"))
+    except (TypeError, ValueError):
+        return JsonResponse({"message": "nilai sensor harus numerik"}, status=400)
+
+    pump_on = bool(body.get("pump_on"))
+    recorded_at_raw = str(body.get("recorded_at", "")).strip()
+    try:
+        recorded_at = datetime.fromisoformat(recorded_at_raw.replace("Z", "+00:00")) if recorded_at_raw else timezone.now()
+    except ValueError:
+        return JsonResponse({"message": "recorded_at harus ISO-8601"}, status=400)
+
+    reading = DripSensorReading.objects.create(
+        device_id=device_id,
+        zone_id=zone_id,
+        soil_moisture_pct=soil_moisture_pct,
+        temperature_c=temperature_c,
+        humidity_pct=humidity_pct,
+        light_lux=light_lux,
+        ai_score=ai_score,
+        pump_on=pump_on,
+        recorded_at=recorded_at,
+    )
+    return JsonResponse(
+        {
+            "message": "data drip berhasil disimpan",
+            "reading": serialize_reading(reading),
+        },
+        status=201,
     )
 
 

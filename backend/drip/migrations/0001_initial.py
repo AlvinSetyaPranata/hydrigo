@@ -41,4 +41,21 @@ class Migration(migrations.Migration):
             ],
             options={"ordering": ["created_at"]},
         ),
+        migrations.CreateModel(
+            name="DripSensorReading",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("device_id", models.CharField(max_length=100)),
+                ("zone_id", models.CharField(max_length=64)),
+                ("soil_moisture_pct", models.FloatField()),
+                ("temperature_c", models.FloatField()),
+                ("humidity_pct", models.FloatField()),
+                ("light_lux", models.FloatField()),
+                ("ai_score", models.FloatField()),
+                ("pump_on", models.BooleanField(default=False)),
+                ("recorded_at", models.DateTimeField()),
+                ("received_at", models.DateTimeField(auto_now_add=True)),
+            ],
+            options={"ordering": ["-recorded_at", "-id"]},
+        ),
     ]
