@@ -9,7 +9,7 @@ export function getApiBaseUrl() {
     return trimTrailingSlash(configured.trim())
   }
 
-  return '/api'
+  return '/api/hydroponics'
 }
 
 export function buildApiUrl(path) {
