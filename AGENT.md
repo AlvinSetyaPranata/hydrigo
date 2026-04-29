@@ -2,11 +2,14 @@
 
 ## Overview
 
-Hydrigo is a small monorepo with three distinct apps:
+Hydrigo is a small monorepo centered on a shared Django backend with multiple API domains behind one deployment:
 
-- `backend/`: Django-based ingest and local blockchain ledger API for hydroponic lettuce sensor data.
-- `frontend/`: Vite dashboard plus a separate Node API, BullMQ worker, Hardhat contracts, and Docker Compose stack.
-- `mobile/`: Expo Router mobile app. It is still close to the Expo starter template.
+- `backend/`: primary Django backend. It now contains two apps:
+  - `iot`: hydroponics ingest plus local blockchain ledger and Ethereum anchor flow
+  - `drip`: drip-irrigation API for schedules, farm summary, history, and profile
+- `frontend/`: Vite dashboard plus a separate Node API, BullMQ worker, Hardhat contracts, and Docker Compose stack for an alternate/local architecture
+- `mobile/`: Expo Router mobile app
+- `mfarm/`: Expo app for the drip system UI. Treat it as client-side/product reference; the deployed drip backend now lives inside `backend/drip/`, not under `mfarm/`.
 
 The repository mixes active source code with checked-in generated artifacts and local environment state. Read the layout section before editing.
 
@@ -17,11 +20,23 @@ The repository mixes active source code with checked-in generated artifacts and 
 Primary implementation:
 
 - `config/`: Django settings and root URL config.
-- `iot/models.py`: persistent models for readings, ingest transactions, ledger blocks, and on-chain anchors.
-- `iot/services.py`: payload validation, transaction creation, ledger hashing, serialization, and chain verification.
-- `iot/views.py`: JSON API endpoints.
-- `iot/urls.py`: backend routes.
+- `iot/models.py`: hydroponics persistent models for readings, ingest transactions, ledger blocks, and on-chain anchors.
+- `iot/services.py`: hydroponics payload validation, transaction creation, ledger hashing, serialization, and chain verification.
+- `iot/views.py`: hydroponics JSON API endpoints.
+- `iot/urls.py`: hydroponics routes.
+- `drip/models.py`: drip schedule and profile models.
+- `drip/views.py`: drip JSON API endpoints.
+- `drip/urls.py`: drip routes.
 - `manage.py`: Django entrypoint.
+
+Current route split inside Django:
+
+- `/api/hydroponics/...` -> `iot` app
+- `/api/drip/...` -> `drip` app
+
+Legacy compatibility note:
+
+- `config/urls.py` still also mounts `iot.urls` at root, so old hydroponics endpoints such as `/api/v1/...` still resolve. New work should prefer the namespaced `/api/hydroponics/...` paths unless the task is explicitly about backwards compatibility.
 
 Also present:
 
@@ -31,7 +46,11 @@ Also present:
 - `db.sqlite3`, `hydrigo.db`: local SQLite databases.
 - `bin/`, `lib/`, `pyvenv.cfg`: checked-in Python virtualenv content.
 
-Important: the documented backend in `backend/README.md` points to the Django app, but the automated tests currently cover `backend/app.py`. Treat these as two parallel implementations and avoid assuming they stay in sync automatically.
+Important:
+
+- The deployed/shared backend is the Django app.
+- `backend/app.py` is still present as a separate standalone implementation with overlapping hydroponics logic. Treat it as parallel code, not the primary deployment target.
+- Django tests now cover both `iot` and `drip`, while standalone tests still cover `backend/app.py`.
 
 ### `frontend/`
 
@@ -67,6 +86,12 @@ Generated/local state checked into the repo:
 - `.expo/`
 - `node_modules/`
 
+### `mfarm/`
+
+- Expo client for the drip system.
+- Its API expectations are useful reference when editing `backend/drip/`.
+- Do not place deployed backend logic here; that backend has been merged into Django.
+
 ## Verified Commands
 
 These commands were verified in this checkout:
@@ -87,6 +112,13 @@ cd backend
 ./bin/python manage.py runserver
 ```
 
+Run Django tests for both apps:
+
+```bash
+cd backend
+./bin/python manage.py test iot drip
+```
+
 Run standalone backend tests:
 
 ```bash
@@ -94,7 +126,7 @@ cd backend
 ./bin/python -m unittest test_app.py
 ```
 
-Status: passes as of April 25, 2026.
+Status: Django `iot` and `drip` tests plus standalone `test_app.py` passed in this checkout as of April 29, 2026.
 
 ### Full Deployment
 
@@ -107,7 +139,7 @@ Repo-level deployment entrypoint:
 This script:
 
 - deploys Django backend through `scripts/deploy_backend.sh`
-- deploys the Dockerized backend, nginx gateway, MQTT broker, and private chain through `docker-compose.deploy.yml`
+- deploys one shared Dockerized backend service, nginx gateway, MQTT broker, and private chain through `docker-compose.deploy.yml`
 - assumes PostgreSQL is provided externally, not by this compose stack
 
 Useful toggles:
@@ -181,6 +213,12 @@ The Django settings currently hardcode:
 - `ALLOWED_HOSTS = ["*"]`
 - SQLite database in `backend/db.sqlite3`
 
+Backend deployment/runtime notes:
+
+- `docker-compose.deploy.yml` runs a single app container named `backend`.
+- Nginx forwards HTTP traffic to that one backend service.
+- Route separation between hydroponics and drip happens inside Django, not by separate backend containers.
+
 ### Frontend env
 
 See `frontend/.env.example`.
@@ -196,17 +234,18 @@ Key variables:
 
 Default frontend behavior:
 
-- API defaults to `/api`
+- API defaults to `/api/hydroponics`
 - MQTT defaults to `/mqtt` on the current host
 
 ## Development Guidance
 
 ### Preferred edit targets
 
-- For backend API changes, update Django files under `backend/iot/` unless the task is explicitly about the standalone server in `backend/app.py`.
+- For hydroponics backend API changes, update Django files under `backend/iot/` unless the task is explicitly about the standalone server in `backend/app.py`.
+- For drip backend API changes, update Django files under `backend/drip/`.
 - For dashboard UI changes, edit `frontend/src/`.
 - For queue/chain/database pipeline changes in the Docker stack, edit `frontend/api/`, `frontend/worker/`, `frontend/contracts/`, and `frontend/docker/` consistently.
-- For mobile work, confirm whether the screen is real product code or leftover scaffold before investing effort.
+- For mobile work, confirm whether the target is `mobile/` or `mfarm/` before editing. `mfarm/` is the drip client; `mobile/` is a separate Expo app.
 
 ### Treat these as generated or local state unless the task explicitly requires them
 
@@ -220,18 +259,23 @@ Default frontend behavior:
 
 ### Architecture caveats
 
-- There are two backend implementations with overlapping logic: Django in `backend/iot/` and standalone HTTP server logic in `backend/app.py`.
+- There are two backend implementations with overlapping hydroponics logic: Django in `backend/iot/` and standalone HTTP server logic in `backend/app.py`.
+- The drip backend is not a separate service anymore; it is a Django app under `backend/drip/`.
+- Hydroponics uses blockchain/ledger logic; drip currently does not use blockchain.
 - Frontend README describes a broader Docker architecture than the root repo structure suggests; the full stack is nested inside `frontend/`.
-- Tests currently give better coverage to the standalone backend path than the Django path.
 - The mobile app README is generic Expo starter documentation and is not a reliable source of project-specific behavior.
+- `mfarm/README.md` historically referred to a backend in `backend/app.py`; that is no longer the deployed drip backend architecture.
 
 ## Suggested Verification By Change Type
 
 - Backend standalone server changes: `cd backend && ./bin/python -m unittest test_app.py`
-- Django backend changes: run migrations if models changed, then exercise endpoints manually with `manage.py runserver`
+- Django hydroponics or drip changes: `cd backend && ./bin/python manage.py test iot drip`
+- Django model changes: run migrations if models changed, then exercise endpoints manually with `manage.py runserver`
+- Route/deployment changes: inspect `backend/config/urls.py`, `docker-compose.deploy.yml`, and `docker/nginx/research.conf` together
 - Frontend React changes: `cd frontend && npm run lint`
 - Docker stack changes: inspect `frontend/docker-compose.yml`, related Dockerfiles, and service env wiring together
 - Mobile changes: `cd mobile && npm run lint`
+- MFarm client changes: `cd mfarm && npm run lint`
 
 ## Working Style
 
