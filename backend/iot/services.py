@@ -27,50 +27,107 @@ def parse_iso_timestamp(value: str) -> datetime:
         raise ValueError("recorded_at harus format ISO-8601") from exc
 
 
+def first_present(data: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in data and data[key] is not None:
+            return data[key]
+    return None
+
+
+def water_level_from_distance(distance_cm: float, max_distance_cm: float) -> float:
+    if max_distance_cm <= 0:
+        raise ValueError("water_level_max_distance_cm harus lebih besar dari 0")
+    fill_ratio = 1.0 - (distance_cm / max_distance_cm)
+    return max(0.0, min(fill_ratio * 100.0, 100.0))
+
+
+def parse_optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "on"}:
+        return True
+    if normalized in {"false", "0", "off"}:
+        return False
+    raise ValueError("pump_status harus boolean")
+
+
 @dataclass
 class ReadingPayload:
     device_id: str
     lettuce_bed_id: str
+    air_temperature_c: float | None
     temperature_c: float
     humidity_pct: float
     ph: float
     tds_ppm: float
+    water_distance_cm: float | None
     water_level_pct: float
     light_lux: float
+    pump_prediction: int | None
+    pump_status: bool | None
     recorded_at: datetime
     signature: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ReadingPayload":
-        required_fields = [
-            "device_id",
-            "lettuce_bed_id",
-            "temperature_c",
-            "humidity_pct",
-            "ph",
-            "tds_ppm",
-            "water_level_pct",
-            "light_lux",
-        ]
-        missing = [field for field in required_fields if field not in data]
+        field_candidates = {
+            "device_id": ("device_id",),
+            "lettuce_bed_id": ("lettuce_bed_id", "bed_id"),
+            "temperature_c": ("temperature_c", "suhu_air", "suhuAir"),
+            "humidity_pct": ("humidity_pct", "kelembapan", "humidity"),
+            "ph": ("ph", "phValue", "ph_value"),
+            "tds_ppm": ("tds_ppm", "tds", "tdsValue"),
+        }
+        missing = [field for field, keys in field_candidates.items() if first_present(data, *keys) is None]
         if missing:
             raise ValueError(f"Field wajib belum ada: {', '.join(missing)}")
 
         try:
+            water_level_pct = first_present(data, "water_level_pct", "waterLevelPct")
+            if water_level_pct is None:
+                distance_cm = first_present(data, "jarak", "distance_cm", "water_distance_cm")
+                if distance_cm is None:
+                    raise ValueError("Field wajib belum ada: water_level_pct")
+                max_distance_cm = first_present(data, "water_level_max_distance_cm", "tank_depth_cm")
+                if max_distance_cm is None:
+                    max_distance_cm = 35.0
+                water_level_pct = water_level_from_distance(float(distance_cm), float(max_distance_cm))
+
+            light_lux = first_present(data, "light_lux", "lightLux", "lux")
+            if light_lux is None:
+                light_lux = 0.0
+
+            air_temperature_c = first_present(data, "air_temperature_c", "suhu")
+            water_distance_cm = first_present(data, "water_distance_cm", "jarak", "distance_cm", "water_distance_cm")
+            pump_prediction = first_present(data, "pump_prediction", "prediksiRelay")
+            pump_status = first_present(data, "pump_status", "pompaStatus")
+
             payload = cls(
-                device_id=str(data["device_id"]).strip(),
-                lettuce_bed_id=str(data["lettuce_bed_id"]).strip(),
-                temperature_c=float(data["temperature_c"]),
-                humidity_pct=float(data["humidity_pct"]),
-                ph=float(data["ph"]),
-                tds_ppm=float(data["tds_ppm"]),
-                water_level_pct=float(data["water_level_pct"]),
-                light_lux=float(data["light_lux"]),
+                device_id=str(first_present(data, "device_id")).strip(),
+                lettuce_bed_id=str(first_present(data, "lettuce_bed_id", "bed_id")).strip(),
+                air_temperature_c=None if air_temperature_c is None else float(air_temperature_c),
+                temperature_c=float(first_present(data, "temperature_c", "suhu_air", "suhuAir")),
+                humidity_pct=float(first_present(data, "humidity_pct", "kelembapan", "humidity")),
+                ph=float(first_present(data, "ph", "phValue", "ph_value")),
+                tds_ppm=float(first_present(data, "tds_ppm", "tds", "tdsValue")),
+                water_distance_cm=None if water_distance_cm is None else float(water_distance_cm),
+                water_level_pct=float(water_level_pct),
+                light_lux=float(light_lux),
+                pump_prediction=None if pump_prediction is None else int(pump_prediction),
+                pump_status=parse_optional_bool(pump_status),
                 recorded_at=parse_iso_timestamp(data.get("recorded_at") or utc_now().isoformat()),
                 signature=None if data.get("signature") is None else str(data["signature"]),
             )
         except (TypeError, ValueError) as exc:
             if str(exc) == "recorded_at harus format ISO-8601":
+                raise
+            if str(exc).startswith("Field wajib belum ada:") or str(exc) in {"water_level_max_distance_cm harus lebih besar dari 0", "pump_status harus boolean"}:
                 raise
             raise ValueError("field numerik harus berupa angka yang valid") from exc
 
@@ -82,6 +139,8 @@ class ReadingPayload:
             raise ValueError("device_id tidak boleh kosong")
         if not self.lettuce_bed_id:
             raise ValueError("lettuce_bed_id tidak boleh kosong")
+        if self.air_temperature_c is not None and not (-10 <= self.air_temperature_c <= 80):
+            raise ValueError("air_temperature_c di luar rentang yang masuk akal")
         if not (-10 <= self.temperature_c <= 60):
             raise ValueError("temperature_c di luar rentang yang masuk akal")
         if not (0 <= self.humidity_pct <= 100):
@@ -90,24 +149,32 @@ class ReadingPayload:
             raise ValueError("ph harus 0-14")
         if not (0 <= self.tds_ppm <= 5000):
             raise ValueError("tds_ppm di luar rentang yang diizinkan")
+        if self.water_distance_cm is not None and self.water_distance_cm < 0:
+            raise ValueError("water_distance_cm tidak boleh negatif")
         if not (0 <= self.water_level_pct <= 100):
             raise ValueError("water_level_pct harus 0-100")
         if self.light_lux < 0:
             raise ValueError("light_lux tidak boleh negatif")
+        if self.pump_prediction is not None and self.pump_prediction not in (0, 1):
+            raise ValueError("pump_prediction harus 0 atau 1")
 
 
 def canonical_payload(payload: ReadingPayload) -> str:
     return json.dumps(
         {
+            "air_temperature_c": payload.air_temperature_c,
             "device_id": payload.device_id,
             "humidity_pct": payload.humidity_pct,
             "lettuce_bed_id": payload.lettuce_bed_id,
             "light_lux": payload.light_lux,
             "ph": payload.ph,
+            "pump_prediction": payload.pump_prediction,
+            "pump_status": payload.pump_status,
             "recorded_at": payload.recorded_at.astimezone(timezone.utc).replace(microsecond=0).isoformat(),
             "signature": payload.signature,
             "tds_ppm": payload.tds_ppm,
             "temperature_c": payload.temperature_c,
+            "water_distance_cm": payload.water_distance_cm,
             "water_level_pct": payload.water_level_pct,
         },
         sort_keys=True,
@@ -142,12 +209,16 @@ def serialize_reading(item: SensorReading) -> dict[str, Any]:
         "transaction_id": item.transaction_id,
         "device_id": item.device_id,
         "lettuce_bed_id": item.lettuce_bed_id,
+        "air_temperature_c": item.air_temperature_c,
         "temperature_c": item.temperature_c,
         "humidity_pct": item.humidity_pct,
         "ph": item.ph,
         "tds_ppm": item.tds_ppm,
+        "water_distance_cm": item.water_distance_cm,
         "water_level_pct": item.water_level_pct,
         "light_lux": item.light_lux,
+        "pump_prediction": item.pump_prediction,
+        "pump_status": item.pump_status,
         "recorded_at": item.recorded_at.isoformat(),
         "received_at": item.received_at.isoformat(),
         "signature": item.signature,
@@ -199,12 +270,16 @@ def ingest_reading(data: dict[str, Any]) -> dict[str, Any]:
         transaction_id=transaction_id,
         device_id=payload.device_id,
         lettuce_bed_id=payload.lettuce_bed_id,
+        air_temperature_c=payload.air_temperature_c,
         temperature_c=payload.temperature_c,
         humidity_pct=payload.humidity_pct,
         ph=payload.ph,
         tds_ppm=payload.tds_ppm,
+        water_distance_cm=payload.water_distance_cm,
         water_level_pct=payload.water_level_pct,
         light_lux=payload.light_lux,
+        pump_prediction=payload.pump_prediction,
+        pump_status=payload.pump_status,
         recorded_at=payload.recorded_at,
         received_at=received_at,
         signature=payload.signature,
@@ -248,12 +323,16 @@ def verify_chain() -> dict[str, Any]:
         payload = ReadingPayload(
             device_id=block.reading.device_id,
             lettuce_bed_id=block.reading.lettuce_bed_id,
+            air_temperature_c=block.reading.air_temperature_c,
             temperature_c=block.reading.temperature_c,
             humidity_pct=block.reading.humidity_pct,
             ph=block.reading.ph,
             tds_ppm=block.reading.tds_ppm,
+            water_distance_cm=block.reading.water_distance_cm,
             water_level_pct=block.reading.water_level_pct,
             light_lux=block.reading.light_lux,
+            pump_prediction=block.reading.pump_prediction,
+            pump_status=block.reading.pump_status,
             recorded_at=block.reading.recorded_at,
             signature=block.reading.signature,
         )

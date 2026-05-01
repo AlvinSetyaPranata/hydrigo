@@ -52,3 +52,40 @@ class IoTIngestTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(IngestTransaction.objects.count(), 0)
+
+    def test_ingest_accepts_esp32_field_names(self):
+        esp32_payload = {
+            "device_id": "esp32-selada-01",
+            "bed_id": "bed-a1",
+            "suhu": 30.4,
+            "suhuAir": 23.9,
+            "kelembapan": 79.5,
+            "phValue": 6.3,
+            "tdsValue": 845.2,
+            "jarak": 7.0,
+            "water_level_max_distance_cm": 35.0,
+            "recorded_at": "2026-04-19T04:00:00Z",
+            "pompaStatus": True,
+            "prediksiRelay": 1,
+        }
+
+        response = self.client.post(
+            "/api/v1/iot/readings",
+            data=json.dumps(esp32_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["reading"]["temperature_c"], 23.9)
+        self.assertEqual(body["reading"]["humidity_pct"], 79.5)
+        self.assertEqual(body["reading"]["ph"], 6.3)
+        self.assertEqual(body["reading"]["tds_ppm"], 845.2)
+        self.assertEqual(body["reading"]["air_temperature_c"], 30.4)
+        self.assertEqual(body["reading"]["water_distance_cm"], 7.0)
+        self.assertEqual(body["reading"]["light_lux"], 0.0)
+        self.assertEqual(body["reading"]["water_level_pct"], 80.0)
+        self.assertEqual(body["reading"]["pump_prediction"], 1)
+        self.assertEqual(body["reading"]["pump_status"], True)
+        self.assertIn("\"pump_status\":true", body["transaction"]["request_payload"])
+        self.assertIn("\"water_distance_cm\":7.0", body["transaction"]["request_payload"])
