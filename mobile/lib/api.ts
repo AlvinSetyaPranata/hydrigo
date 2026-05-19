@@ -130,6 +130,18 @@ type ManualControlListResponse = {
   error?: string;
 };
 
+type ControlModeResponse = {
+  data?: {
+    mode?: string;
+    selectedMode?: string;
+    controlMode?: number;
+  };
+  mode?: string;
+  selectedMode?: string;
+  controlMode?: number;
+  error?: string;
+};
+
 type ChainResponse = {
   data?: LedgerBlock[];
   verification?: LedgerVerification;
@@ -477,8 +489,30 @@ export async function updateManualControl(controlId: string, status: boolean) {
   }
 }
 
-export async function updateNutrientMode(_mode: string) {
-  throw new Error('Backend hydroponics tidak menyediakan endpoint mode nutrisi.');
+export async function updateNutrientMode(mode: string) {
+  const requestedMode = mode.toLowerCase() === 'semai' ? 'manual' : 'automatic';
+  const response = await fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/controls/mode`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      mode: requestedMode,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Gagal mengubah mode nutrisi.');
+  }
+
+  const result = await parseJson<ControlModeResponse>(response);
+  const normalizedMode = result.data?.mode ?? result.mode;
+
+  if (!normalizedMode) {
+    throw new Error('Respons mode kontrol tidak valid.');
+  }
+
+  return requestedMode === 'manual' ? 'Semai' : mode;
 }
 
 export async function fetchLedgerChain(page = 1, limit = 10): Promise<PaginatedLedgerResult> {

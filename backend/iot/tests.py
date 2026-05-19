@@ -2,7 +2,7 @@ import json
 
 from django.test import Client, TestCase
 
-from .models import IngestTransaction, ManualControl, SensorReading
+from .models import ControlMode, IngestTransaction, ManualControl, SensorReading
 from .services import verify_chain
 
 
@@ -113,3 +113,26 @@ class IoTIngestTests(TestCase):
         body = response.json()
         self.assertEqual(body["data"][0]["status"], True)
         self.assertEqual(ManualControl.objects.get(control_id="water-pump").status, True)
+
+    def test_control_mode_endpoint_returns_default_mode(self):
+        response = self.client.get("/api/v1/controls/mode")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["mode"], "automatic")
+        self.assertEqual(body["selectedMode"], "automatic")
+        self.assertEqual(body["controlMode"], 0)
+        self.assertEqual(ControlMode.objects.count(), 1)
+
+    def test_control_mode_endpoint_updates_mode(self):
+        response = self.client.post(
+            "/api/v1/controls/mode",
+            data=json.dumps({"mode": "manual"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["mode"], "manual")
+        self.assertEqual(body["controlMode"], 1)
+        self.assertEqual(ControlMode.objects.first().mode, "manual")

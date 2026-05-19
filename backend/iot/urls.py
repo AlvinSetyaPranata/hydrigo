@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     blockchain_chain_view,
+    control_mode_view,
     health_view,
     iot_reading_ingest_view,
     manual_controls_view,
@@ -14,6 +15,7 @@ from .views import (
 urlpatterns = [
     path("health", health_view),
     path("api/v1/controls/manual", manual_controls_view),
+    path("api/v1/controls/mode", control_mode_view),
     path("api/v1/iot/readings", iot_reading_ingest_view),
     path("api/v1/readings", readings_view),
     path("api/v1/transactions", transactions_view),

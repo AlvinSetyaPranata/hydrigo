@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from .models import IngestTransaction, LedgerBlock, ManualControl, SensorReading
+from .models import ControlMode, IngestTransaction, LedgerBlock, ManualControl, SensorReading
 from .services import ingest_reading, serialize_block, serialize_reading, serialize_transaction, utc_now, verify_chain
 
 
@@ -19,12 +19,26 @@ def ensure_manual_controls():
     )
 
 
+def ensure_control_mode():
+    return ControlMode.objects.get_or_create(defaults={"mode": "automatic"})[0]
+
+
 def serialize_manual_control(item: ManualControl):
     return {
         "id": item.control_id,
         "name": item.name,
         "description": item.description,
         "status": item.status,
+        "updatedAt": item.updated_at.isoformat(),
+    }
+
+
+def serialize_control_mode(item: ControlMode):
+    normalized_mode = "manual" if item.mode == "manual" else "automatic"
+    return {
+        "mode": normalized_mode,
+        "selectedMode": normalized_mode,
+        "controlMode": 1 if normalized_mode == "manual" else 0,
         "updatedAt": item.updated_at.isoformat(),
     }
 
@@ -64,6 +78,32 @@ def manual_controls_view(request):
     control.save(update_fields=["status", "updated_at"])
     controls = [serialize_manual_control(item) for item in ManualControl.objects.all()]
     return JsonResponse({"data": controls})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def control_mode_view(request):
+    control_mode = ensure_control_mode()
+
+    if request.method == "GET":
+        return JsonResponse({"data": serialize_control_mode(control_mode), **serialize_control_mode(control_mode)})
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "body harus JSON valid"}, status=400)
+
+    requested_mode = str(body.get("mode", "")).strip().lower()
+    if requested_mode in {"auto", "otomatis"}:
+        requested_mode = "automatic"
+
+    if requested_mode not in {"manual", "automatic"}:
+        return JsonResponse({"error": "mode harus manual atau automatic"}, status=400)
+
+    control_mode.mode = requested_mode
+    control_mode.save(update_fields=["mode", "updated_at"])
+    payload = serialize_control_mode(control_mode)
+    return JsonResponse({"data": payload, **payload})
 
 
 @csrf_exempt

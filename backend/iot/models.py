@@ -75,3 +75,11 @@ class ManualControl(models.Model):
 
     class Meta:
         ordering = ["control_id"]
+
+
+class ControlMode(models.Model):
+    mode = models.CharField(max_length=16, default="automatic")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["id"]
