@@ -259,6 +259,164 @@ Default frontend behavior:
 - Django persists the forwarded ingest payload
 - Mobile/web clients read state from backend and may also use MQTT separately for UI sync
 
+### Integration reference
+
+Current hydroponics endpoints on the Django backend:
+
+- `GET http://109.110.188.181/api/hydroponics/health`
+- `POST http://109.110.188.181/api/hydroponics/api/v1/iot/readings`
+- `GET http://109.110.188.181/api/hydroponics/api/v1/readings?limit=20`
+- `GET http://109.110.188.181/api/hydroponics/api/v1/blockchain/chain?page=1&limit=10`
+- `GET http://109.110.188.181/api/hydroponics/api/v1/controls/manual`
+- `POST http://109.110.188.181/api/hydroponics/api/v1/controls/manual`
+- `GET http://109.110.188.181/api/hydroponics/api/v1/controls/mode`
+- `POST http://109.110.188.181/api/hydroponics/api/v1/controls/mode`
+
+Current MQTT topics:
+
+- Device telemetry publish: `hydrigo/lettuce/sensor`
+- UI/device control publish: `hydrigo/lettuce/control`
+- Shared status broadcast: `hydrigo/lettuce/status`
+
+Flow scheme:
+
+1. ESP32 builds one telemetry payload containing sensor values, control mode, pump state, and device phase.
+2. ESP32 publishes that payload to MQTT topic `hydrigo/lettuce/sensor`.
+3. `frontend/api/src/index.js` subscribes to that topic and forwards the same JSON to `POST /api/hydroponics/api/v1/iot/readings`.
+4. Django validates and stores the reading, then creates ingest transaction and ledger block records.
+5. Mobile/web clients fetch latest readings from the Django API.
+6. Mobile/web clients update control state through HTTP control endpoints and may also publish MQTT control/status messages for UI sync.
+
+ESP32 telemetry payload example:
+
+```json
+{
+  "device_id": "esp32-selada-01",
+  "bed_id": "bed-a1",
+  "suhu": 30.10,
+  "kelembapan": 81.20,
+  "suhuAir": 28.90,
+  "phValue": 6.42,
+  "tdsValue": 812.30,
+  "jarak": 4.20,
+  "persenAir": 76,
+  "statusAir": "NORMAL",
+  "controlMode": 1,
+  "mode": "MANUAL",
+  "manualPumpCommand": true,
+  "pump_status": true,
+  "pumpState": "ON",
+  "pompaStatus": true,
+  "perintahPompa": true,
+  "devicePhase": "Manual aktif - pompa menyala",
+  "prediksiRelay": 1
+}
+```
+
+MQTT bridge forwarding target:
+
+- Source topic: `hydrigo/lettuce/sensor`
+- Forward target: `POST http://109.110.188.181/api/hydroponics/api/v1/iot/readings`
+
+Hydroponics ingest success response example:
+
+```json
+{
+  "message": "transaksi ingest berhasil disimpan",
+  "transaction": {
+    "transaction_id": "txn-1234567890abcdef",
+    "device_id": "esp32-selada-01",
+    "lettuce_bed_id": "bed-a1",
+    "status": "stored"
+  },
+  "reading": {
+    "device_id": "esp32-selada-01",
+    "lettuce_bed_id": "bed-a1",
+    "temperature_c": 28.9,
+    "humidity_pct": 81.2,
+    "ph": 6.42,
+    "tds_ppm": 812.3,
+    "pump_status": true,
+    "device_phase": "Manual aktif - pompa menyala"
+  },
+  "ledger": {
+    "block_index": 42,
+    "device_id": "esp32-selada-01",
+    "lettuce_bed_id": "bed-a1"
+  }
+}
+```
+
+Manual control request example:
+
+```json
+{
+  "controlId": "water-pump",
+  "status": true
+}
+```
+
+Manual control response example:
+
+```json
+{
+  "data": [
+    {
+      "id": "water-pump",
+      "name": "Pompa Air",
+      "description": "Kontrol manual pompa air utama untuk sirkulasi nutrisi.",
+      "status": true
+    }
+  ]
+}
+```
+
+Control mode request example:
+
+```json
+{
+  "mode": "manual"
+}
+```
+
+Control mode response example:
+
+```json
+{
+  "data": {
+    "mode": "manual",
+    "selectedMode": "manual",
+    "controlMode": 1
+  },
+  "mode": "manual",
+  "selectedMode": "manual",
+  "controlMode": 1
+}
+```
+
+Latest readings response example:
+
+```json
+{
+  "data": [
+    {
+      "device_id": "esp32-selada-01",
+      "lettuce_bed_id": "bed-a1",
+      "temperature_c": 28.9,
+      "humidity_pct": 81.2,
+      "ph": 6.42,
+      "tds_ppm": 812.3,
+      "pump_status": true,
+      "device_phase": "Auto - mixing nutrisi"
+    }
+  ],
+  "limit": 20,
+  "page": 1,
+  "total": 1,
+  "total_pages": 1
+}
+```
+
 ## Development Guidance
 
 ### Preferred edit targets
