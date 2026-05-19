@@ -136,3 +136,32 @@ class IoTIngestTests(TestCase):
         self.assertEqual(body["mode"], "manual")
         self.assertEqual(body["controlMode"], 1)
         self.assertEqual(ControlMode.objects.first().mode, "manual")
+
+    def test_ingest_syncs_manual_override_back_to_automatic(self):
+        self.client.post(
+            "/api/v1/controls/manual",
+            data=json.dumps({"controlId": "water-pump", "status": True}),
+            content_type="application/json",
+        )
+        self.client.post(
+            "/api/v1/controls/mode",
+            data=json.dumps({"mode": "manual"}),
+            content_type="application/json",
+        )
+
+        payload = {
+            **self.payload,
+            "controlMode": 0,
+            "mode": "AUTO",
+            "manualPumpCommand": False,
+            "pump_status": False,
+        }
+        response = self.client.post(
+            "/api/v1/iot/readings",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(ControlMode.objects.first().mode, "automatic")
+        self.assertEqual(ManualControl.objects.get(control_id="water-pump").status, False)

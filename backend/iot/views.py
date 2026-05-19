@@ -43,6 +43,34 @@ def serialize_control_mode(item: ControlMode):
     }
 
 
+def sync_control_state_from_device(body: dict):
+    ensure_manual_controls()
+    control_mode = ensure_control_mode()
+
+    raw_mode = str(body.get("mode", body.get("selectedMode", ""))).strip().lower()
+    raw_control_mode = body.get("controlMode")
+
+    normalized_mode = None
+    if raw_mode in {"manual"}:
+        normalized_mode = "manual"
+    elif raw_mode in {"auto", "automatic", "otomatis"}:
+        normalized_mode = "automatic"
+    elif raw_control_mode in {0, 1, "0", "1"}:
+        normalized_mode = "manual" if str(raw_control_mode) == "1" else "automatic"
+
+    if normalized_mode is not None and control_mode.mode != normalized_mode:
+        control_mode.mode = normalized_mode
+        control_mode.save(update_fields=["mode", "updated_at"])
+
+    if "manualPumpCommand" in body or "pump" in body or "pompa" in body or "pump_status" in body or "pompaStatus" in body:
+        raw_status = body.get("manualPumpCommand", body.get("pump", body.get("pompa", body.get("pump_status", body.get("pompaStatus")))))
+        manual_status = bool(raw_status)
+        control = ManualControl.objects.filter(control_id="water-pump").first()
+        if control is not None and control.status != manual_status:
+            control.status = manual_status
+            control.save(update_fields=["status", "updated_at"])
+
+
 @require_GET
 def health_view(request):
     return JsonResponse({"status": "ok", "timestamp": utc_now().isoformat()})
@@ -118,6 +146,8 @@ def iot_reading_ingest_view(request):
         result = ingest_reading(body)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
+
+    sync_control_state_from_device(body)
 
     return JsonResponse(
         {
