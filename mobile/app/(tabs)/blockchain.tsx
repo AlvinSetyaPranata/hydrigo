@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { fetchLedgerChain, getLedgerBaseUrl, type LedgerBlock, type LedgerVerification } from '@/lib/api';
+
+const PAGE_SIZE = 10;
 
 function shortHash(value: string) {
   if (value.length <= 16) {
@@ -30,12 +33,14 @@ function formatTimestamp(value: string) {
 export default function BlockchainScreen() {
   const [blocks, setBlocks] = useState<LedgerBlock[]>([]);
   const [verification, setVerification] = useState<LedgerVerification | null>(null);
-  const [selectedBlockIndex, setSelectedBlockIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalBlocks, setTotalBlocks] = useState(0);
 
-  async function loadChain(isRefresh = false) {
+  const loadChain = useCallback(async (nextPage: number, isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -43,12 +48,14 @@ export default function BlockchainScreen() {
     }
 
     try {
-      const result = await fetchLedgerChain();
+      const result = await fetchLedgerChain(nextPage, PAGE_SIZE);
       const nextBlocks = [...result.blocks].reverse();
 
       setBlocks(nextBlocks);
       setVerification(result.verification);
-      setSelectedBlockIndex((current) => current ?? nextBlocks[0]?.block_index ?? null);
+      setPage(result.page);
+      setTotalPages(result.totalPages);
+      setTotalBlocks(result.total);
       setError('');
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Gagal memuat ledger blockchain.');
@@ -59,16 +66,19 @@ export default function BlockchainScreen() {
         setLoading(false);
       }
     }
-  }
-
-  useEffect(() => {
-    loadChain().catch(() => undefined);
   }, []);
 
-  const selectedBlock = useMemo(
-    () => blocks.find((block) => block.block_index === selectedBlockIndex) ?? blocks[0] ?? null,
-    [blocks, selectedBlockIndex],
-  );
+  useEffect(() => {
+    loadChain(page).catch(() => undefined);
+  }, [loadChain, page]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      loadChain(page).catch(() => undefined);
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [loadChain, page]);
 
   if (loading) {
     return (
@@ -89,21 +99,21 @@ export default function BlockchainScreen() {
       style={styles.screen}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadChain(true).catch(() => undefined)} />}>
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadChain(page, true).catch(() => undefined)} />}>
       <View style={styles.hero}>
         <View style={styles.heroGlow} />
-        <ThemedText style={styles.kicker}>Hydrigo Chain</ThemedText>
+        <ThemedText style={styles.kicker}>Blockchain Ledger</ThemedText>
         <ThemedText type="title" style={styles.title}>
-          Jejak ledger yang dibaca langsung dari backend
+          Integritas data dalam satu rantai pencatatan.
         </ThemedText>
         <ThemedText style={styles.subtitle}>
-          Tab ini tidak lagi memakai block dummy. Jika Django ledger aktif, mobile menampilkan block hash-chain asli beserta status verifikasinya.
+          Tampilkan urutan block, hash payload, dan status verifikasi untuk meninjau konsistensi data yang dikirim dari perangkat ke backend.
         </ThemedText>
 
         <View style={styles.nodeGrid}>
           <View style={styles.nodeCard}>
             <ThemedText style={styles.nodeLabel}>Jumlah block</ThemedText>
-            <ThemedText style={styles.nodeValue}>{blocks.length}</ThemedText>
+            <ThemedText style={styles.nodeValue}>{totalBlocks}</ThemedText>
           </View>
           <View style={styles.nodeCard}>
             <ThemedText style={styles.nodeLabel}>Validasi chain</ThemedText>
@@ -111,46 +121,10 @@ export default function BlockchainScreen() {
           </View>
           <View style={styles.nodeCard}>
             <ThemedText style={styles.nodeLabel}>Ledger API</ThemedText>
-            <ThemedText style={styles.nodeValue}>{getLedgerBaseUrl() ? 'Resolved' : 'Unset'}</ThemedText>
+            <ThemedText style={styles.nodeValue}>{getLedgerBaseUrl() ? 'Terhubung' : 'Belum diatur'}</ThemedText>
           </View>
         </View>
       </View>
-
-      {selectedBlock ? (
-        <View style={styles.detailCard}>
-          <View style={styles.sectionHeader}>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>
-              Detail transaksi
-            </ThemedText>
-            <ThemedText style={styles.sectionHint}>Block #{selectedBlock.block_index}</ThemedText>
-          </View>
-
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Device</ThemedText>
-            <ThemedText style={styles.detailValue}>{selectedBlock.device_id}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Bed</ThemedText>
-            <ThemedText style={styles.detailValue}>{selectedBlock.lettuce_bed_id}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Transaction</ThemedText>
-            <ThemedText style={styles.detailValue}>{selectedBlock.transaction_id}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Hash block</ThemedText>
-            <ThemedText style={styles.detailValue}>{selectedBlock.block_hash}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Payload hash</ThemedText>
-            <ThemedText style={styles.detailValue}>{selectedBlock.payload_hash}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Waktu</ThemedText>
-            <ThemedText style={styles.detailValue}>{formatTimestamp(selectedBlock.created_at)}</ThemedText>
-          </View>
-        </View>
-      ) : null}
 
       <View style={styles.chainCard}>
         <View style={styles.sectionHeader}>
@@ -158,27 +132,62 @@ export default function BlockchainScreen() {
             Block terbaru
           </ThemedText>
           <ThemedText style={styles.sectionHint}>
-            {verification?.valid ? 'Chain tervalidasi' : verification?.reason || 'Belum ada data'}
+            {verification?.valid ? 'Data chain valid' : verification?.reason || 'Belum ada data'}
           </ThemedText>
+        </View>
+
+        <View style={styles.paginationBar}>
+          <Pressable
+            style={[styles.pageButton, page <= 1 ? styles.pageButtonDisabled : null]}
+            onPress={() => loadChain(page - 1).catch(() => undefined)}
+            disabled={page <= 1}>
+            <ThemedText style={styles.pageButtonText}>Sebelumnya</ThemedText>
+          </Pressable>
+          <ThemedText style={styles.pageInfo}>Halaman {page} / {totalPages}</ThemedText>
+          <Pressable
+            style={[styles.pageButton, page >= totalPages ? styles.pageButtonDisabled : null]}
+            onPress={() => loadChain(page + 1).catch(() => undefined)}
+            disabled={page >= totalPages}>
+            <ThemedText style={styles.pageButtonText}>Berikutnya</ThemedText>
+          </Pressable>
         </View>
 
         {blocks.length === 0 ? (
           <View style={styles.emptyCard}>
-            <ThemedText style={styles.emptyTitle}>Ledger belum tersedia</ThemedText>
+            <ThemedText style={styles.emptyTitle}>Data ledger belum tersedia</ThemedText>
             <ThemedText style={styles.emptyBody}>
-              Jalankan Django backend atau isi `EXPO_PUBLIC_LEDGER_API_BASE_URL` agar tab blockchain bisa mengambil data nyata.
+              Pastikan backend ledger aktif dan `EXPO_PUBLIC_LEDGER_API_BASE_URL` sudah mengarah ke server yang benar.
             </ThemedText>
           </View>
         ) : (
           blocks.map((block, index) => (
             <Pressable
               key={block.block_index}
-              style={[
-                styles.blockRow,
-                index < blocks.length - 1 ? styles.blockBorder : null,
-                selectedBlockIndex === block.block_index ? styles.blockRowActive : null,
-              ]}
-              onPress={() => setSelectedBlockIndex(block.block_index)}>
+              style={[styles.blockRow, index < blocks.length - 1 ? styles.blockBorder : null]}
+              onPress={() =>
+                router.push({
+                  pathname: '/block-detail',
+                  params: {
+                    blockIndex: String(block.block_index),
+                    readingId: String(block.reading_id),
+                    transactionId: block.transaction_id,
+                    deviceId: block.device_id,
+                    lettuceBedId: block.lettuce_bed_id,
+                    payloadHash: block.payload_hash,
+                    previousHash: block.previous_hash,
+                    blockHash: block.block_hash,
+                    createdAt: block.created_at,
+                    ph: block.ph != null ? String(block.ph) : '',
+                    tdsPpm: block.tds_ppm != null ? String(block.tds_ppm) : '',
+                    waterTemp: block.temperature_c != null ? String(block.temperature_c) : '',
+                    airTemp: block.air_temperature_c != null ? String(block.air_temperature_c) : '',
+                    humidity: block.humidity_pct != null ? String(block.humidity_pct) : '',
+                    waterLevel: block.water_level_pct != null ? String(block.water_level_pct) : '',
+                    chainStatus: verification?.valid ? 'Tervalidasi' : 'Perlu pemeriksaan',
+                    chainNote: verification?.valid ? 'Hash dan urutan block sesuai hasil verifikasi backend.' : verification?.reason || '',
+                  },
+                })
+              }>
               <View style={styles.blockIdWrap}>
                 <ThemedText style={styles.blockId}>#{block.block_index}</ThemedText>
               </View>
@@ -189,10 +198,10 @@ export default function BlockchainScreen() {
                 </View>
                 <ThemedText style={styles.blockHash}>{shortHash(block.block_hash)}</ThemedText>
                 <ThemedText style={styles.blockDetail}>
-                  Bed {block.lettuce_bed_id} • Tx {block.transaction_id}
+                  Bed {block.lettuce_bed_id} • Transaksi {block.transaction_id}
                 </ThemedText>
                 <View style={[styles.statusPill, verification?.valid ? styles.statusConfirmed : styles.statusPending]}>
-                  <ThemedText style={styles.statusPillText}>{verification?.valid ? 'Confirmed' : 'Check chain'}</ThemedText>
+                  <ThemedText style={styles.statusPillText}>{verification?.valid ? 'Tervalidasi' : 'Perlu pemeriksaan'}</ThemedText>
                 </View>
               </View>
             </Pressable>
@@ -298,12 +307,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: 6,
   },
-  detailCard: {
-    borderRadius: 28,
-    padding: 18,
-    backgroundColor: '#ffffff',
-    gap: 14,
-  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -318,24 +321,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  detailRow: {
-    gap: 4,
-  },
-  detailLabel: {
-    color: '#5f6c85',
-    fontSize: 12,
-    textTransform: 'uppercase',
-    fontWeight: '700',
-  },
-  detailValue: {
-    color: '#172033',
-    fontWeight: '700',
-  },
   chainCard: {
     borderRadius: 28,
     padding: 18,
     backgroundColor: '#ffffff',
     gap: 8,
+  },
+  paginationBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  pageButton: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#0f1724',
+  },
+  pageButtonDisabled: {
+    backgroundColor: '#cbd5e1',
+  },
+  pageButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  pageInfo: {
+    color: '#5f6c85',
+    fontSize: 12,
+    fontWeight: '700',
   },
   emptyCard: {
     borderRadius: 20,
@@ -359,12 +376,6 @@ const styles = StyleSheet.create({
   blockBorder: {
     borderBottomWidth: 1,
     borderBottomColor: '#edf1f6',
-  },
-  blockRowActive: {
-    backgroundColor: '#f6f9fe',
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 16,
   },
   blockIdWrap: {
     width: 54,

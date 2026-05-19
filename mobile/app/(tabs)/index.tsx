@@ -9,6 +9,7 @@ const emptySnapshot = {
   ph: '--',
   waterTemp: '--',
   humidity: '--',
+  waterLevel: '--',
 };
 
 export default function DashboardScreen() {
@@ -16,7 +17,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [brokerState, setBrokerState] = useState('Connecting');
+  const [brokerState, setBrokerState] = useState('Menghubungkan');
   const [sensorSnapshot, setSensorSnapshot] = useState(emptySnapshot);
 
   async function loadDashboard(isRefresh = false) {
@@ -47,14 +48,22 @@ export default function DashboardScreen() {
   }, []);
 
   useEffect(() => {
+    const intervalId = setInterval(() => {
+      loadDashboard().catch(() => undefined);
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
     let cleanup = () => undefined;
 
     try {
       cleanup = attachBrokerListeners({
-        onConnect: () => setBrokerState('Connected'),
-        onReconnect: () => setBrokerState('Reconnecting'),
+        onConnect: () => setBrokerState('Terhubung'),
+        onReconnect: () => setBrokerState('Menghubungkan ulang'),
         onClose: () => setBrokerState('Offline'),
-        onError: () => setBrokerState('Error'),
+        onError: () => setBrokerState('Gangguan koneksi'),
       });
 
       const unsubscribeSensor = subscribeTopic(mqttTopics.sensor, (message) => {
@@ -64,9 +73,10 @@ export default function DashboardScreen() {
             ph: payload.ph ?? current.ph,
             waterTemp: payload.waterTemp ?? current.waterTemp,
             humidity: payload.humidity ?? current.humidity,
+            waterLevel: payload.waterLevel ?? current.waterLevel,
           }));
         } catch {
-          setBrokerState('Payload Error');
+          setBrokerState('Data tidak valid');
         }
       });
 
@@ -85,7 +95,7 @@ export default function DashboardScreen() {
             setDashboard((current) => (current ? { ...current, manualControls: payload.controls ?? current.manualControls } : current));
           }
         } catch {
-          setBrokerState('Payload Error');
+          setBrokerState('Data tidak valid');
         }
       });
 
@@ -95,7 +105,7 @@ export default function DashboardScreen() {
         cleanup();
       };
     } catch (mqttError) {
-      setBrokerState('Unavailable');
+      setBrokerState('Tidak tersedia');
       setError((mqttError as Error).message);
     }
 
@@ -104,7 +114,7 @@ export default function DashboardScreen() {
 
   const heroStats = [
     dashboard?.heroStats?.[0] ?? { value: '-', label: 'rak selada aktif' },
-    { value: dashboard ? 'Connected' : 'Waiting', label: 'status backend api' },
+    { value: dashboard ? 'Terhubung' : 'Menunggu', label: 'status backend api' },
     { value: brokerState, label: 'status broker mqtt' },
   ];
 
@@ -154,15 +164,15 @@ export default function DashboardScreen() {
           </View>
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
-            <ThemedText style={styles.liveText}>API Connected</ThemedText>
+            <ThemedText style={styles.liveText}>API terhubung</ThemedText>
           </View>
         </View>
 
         <ThemedText type="title" style={styles.heroTitle}>
-          Monitoring khusus budidaya selada hidroponik.
+          Pantau kondisi budidaya selada dari satu tampilan.
         </ThemedText>
         <ThemedText style={styles.heroBody}>
-          Aplikasi mobile membaca payload dashboard yang sama dengan web, jadi operator lapangan melihat status yang konsisten.
+          Data yang tampil di mobile mengikuti backend yang sama dengan dashboard web, jadi kondisi lapangan tetap sinkron.
         </ThemedText>
 
         <View style={styles.heroStats}>
@@ -178,9 +188,9 @@ export default function DashboardScreen() {
       <View style={styles.snapshotCard}>
         <View style={styles.sectionHeader}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Snapshot sensor
+            Ringkasan sensor
           </ThemedText>
-          <ThemedText style={styles.sectionCaption}>Data dari backend dashboard</ThemedText>
+          <ThemedText style={styles.sectionCaption}>Data terbaru dari sistem</ThemedText>
         </View>
 
         <View style={styles.snapshotGrid}>
@@ -195,6 +205,10 @@ export default function DashboardScreen() {
           <View style={styles.snapshotItem}>
             <ThemedText style={styles.snapshotLabel}>Suhu air</ThemedText>
             <ThemedText style={styles.snapshotValue}>{sensorSnapshot.waterTemp}</ThemedText>
+          </View>
+          <View style={styles.snapshotItem}>
+            <ThemedText style={styles.snapshotLabel}>Level ketinggian air</ThemedText>
+            <ThemedText style={styles.snapshotValue}>{sensorSnapshot.waterLevel}</ThemedText>
           </View>
         </View>
       </View>
@@ -263,7 +277,7 @@ export default function DashboardScreen() {
             <ThemedText type="subtitle" style={styles.sectionTitle}>
               Agenda hari ini
             </ThemedText>
-            <ThemedText style={styles.sectionCaption}>Sinkron dari API</ThemedText>
+            <ThemedText style={styles.sectionCaption}>Disusun dari backend</ThemedText>
           </View>
           {dashboard.schedule.map((item) => (
             <View key={item.task} style={styles.listRow}>
@@ -281,7 +295,7 @@ export default function DashboardScreen() {
             <ThemedText type="subtitle" style={styles.sectionTitle}>
               Aktivitas terbaru
             </ThemedText>
-            <ThemedText style={styles.sectionCaption}>Operasional greenhouse</ThemedText>
+            <ThemedText style={styles.sectionCaption}>Kegiatan sistem dan operator</ThemedText>
           </View>
           {dashboard.activities.map((item) => (
             <View key={`${item.time}-${item.title}`} style={styles.activityRow}>

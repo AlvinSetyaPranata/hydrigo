@@ -101,6 +101,118 @@ Deploy path saat ini ditujukan untuk research/self-hosted mode:
 
 ## Endpoint
 
+### Drip service routes
+
+Semua endpoint drip memakai prefix `/api/drip`.
+
+#### Health
+
+```bash
+GET /api/drip/health
+```
+
+Response ringkas status service drip.
+
+#### Farm summary
+
+```bash
+GET /api/drip/farm-summary
+```
+
+Mengembalikan ringkasan dashboard, statistik, dan data zona.
+
+#### IoT readings
+
+```bash
+GET /api/drip/iot/readings
+POST /api/drip/iot/readings
+```
+
+- `GET` mengambil daftar data sensor drip. Mendukung query parameter `limit`.
+- `POST` menyimpan data sensor drip baru.
+
+Contoh payload `POST`:
+
+```json
+{
+  "device_id": "esp32-drip-01",
+  "zone_id": "zone-a",
+  "soil_moisture_pct": 58.4,
+  "temperature_c": 27.1,
+  "humidity_pct": 71.2,
+  "light_lux": 28500,
+  "ai_score": 0.87,
+  "pump_on": true,
+  "recorded_at": "2026-04-29T06:00:00Z"
+}
+```
+
+#### Schedules
+
+```bash
+GET /api/drip/schedules
+POST /api/drip/schedules
+PATCH /api/drip/schedules/<schedule_id>
+```
+
+- `GET` mengambil daftar jadwal irigasi.
+- `POST` membuat jadwal baru.
+- `PATCH` mengubah status `isEnabled` untuk jadwal tertentu.
+
+Contoh payload `POST`:
+
+```json
+{
+  "name": "Siram Pagi",
+  "selectedZone": "zone-a",
+  "startTime": "06:00",
+  "selectedDays": ["mon", "wed", "fri"],
+  "duration": 15,
+  "triggerLogic": "time_only"
+}
+```
+
+Contoh payload `PATCH`:
+
+```json
+{
+  "isEnabled": false
+}
+```
+
+#### History
+
+```bash
+GET /api/drip/history
+```
+
+Mengembalikan data riwayat irigasi. Mendukung query parameter `month` dan `year`.
+
+#### Profile
+
+```bash
+GET /api/drip/profile
+PUT /api/drip/profile
+```
+
+- `GET` mengambil profil drip saat ini.
+- `PUT` memperbarui profil drip.
+
+Contoh payload `PUT`:
+
+```json
+{
+  "name": "Andi Pratama",
+  "role": "Petani SmartDrip",
+  "location": "Bandung, Jawa Barat",
+  "email": "andi.pratama@mfarm.id",
+  "phone": "+62 812 3456 7890",
+  "farmName": "Kebun SmartDrip Lembang",
+  "farmArea": "2,4 hektare",
+  "activeSince": "April 2026"
+}
+```
+
 ### Health check
 
 ```bash

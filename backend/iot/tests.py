@@ -2,7 +2,7 @@ import json
 
 from django.test import Client, TestCase
 
-from .models import IngestTransaction, SensorReading
+from .models import IngestTransaction, ManualControl, SensorReading
 from .services import verify_chain
 
 
@@ -89,3 +89,27 @@ class IoTIngestTests(TestCase):
         self.assertEqual(body["reading"]["pump_status"], True)
         self.assertIn("\"pump_status\":true", body["transaction"]["request_payload"])
         self.assertIn("\"water_distance_cm\":7.0", body["transaction"]["request_payload"])
+
+    def test_manual_controls_endpoint_returns_default_pump_control(self):
+        response = self.client.get("/api/v1/controls/manual")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["data"]), 1)
+        self.assertEqual(body["data"][0]["id"], "water-pump")
+        self.assertEqual(body["data"][0]["name"], "Pompa Air")
+        self.assertEqual(ManualControl.objects.count(), 1)
+
+    def test_manual_controls_endpoint_updates_pump_status(self):
+        self.client.get("/api/v1/controls/manual")
+
+        response = self.client.post(
+            "/api/v1/controls/manual",
+            data=json.dumps({"controlId": "water-pump", "status": True}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["data"][0]["status"], True)
+        self.assertEqual(ManualControl.objects.get(control_id="water-pump").status, True)

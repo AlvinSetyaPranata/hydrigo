@@ -2,15 +2,68 @@ import json
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from .models import IngestTransaction, LedgerBlock, SensorReading
+from .models import IngestTransaction, LedgerBlock, ManualControl, SensorReading
 from .services import ingest_reading, serialize_block, serialize_reading, serialize_transaction, utc_now, verify_chain
+
+
+def ensure_manual_controls():
+    ManualControl.objects.get_or_create(
+        control_id="water-pump",
+        defaults={
+            "name": "Pompa Air",
+            "description": "Kontrol manual pompa air utama untuk sirkulasi nutrisi.",
+            "status": False,
+        },
+    )
+
+
+def serialize_manual_control(item: ManualControl):
+    return {
+        "id": item.control_id,
+        "name": item.name,
+        "description": item.description,
+        "status": item.status,
+        "updatedAt": item.updated_at.isoformat(),
+    }
 
 
 @require_GET
 def health_view(request):
     return JsonResponse({"status": "ok", "timestamp": utc_now().isoformat()})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def manual_controls_view(request):
+    ensure_manual_controls()
+
+    if request.method == "GET":
+        controls = [serialize_manual_control(item) for item in ManualControl.objects.all()]
+        return JsonResponse({"data": controls})
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "body harus JSON valid"}, status=400)
+
+    control_id = str(body.get("controlId", "")).strip()
+    status = body.get("status")
+
+    if not control_id:
+        return JsonResponse({"error": "controlId wajib diisi"}, status=400)
+    if not isinstance(status, bool):
+        return JsonResponse({"error": "status harus boolean"}, status=400)
+
+    control = ManualControl.objects.filter(control_id=control_id).first()
+    if control is None:
+        return JsonResponse({"error": "kontrol tidak ditemukan"}, status=404)
+
+    control.status = status
+    control.save(update_fields=["status", "updated_at"])
+    controls = [serialize_manual_control(item) for item in ManualControl.objects.all()]
+    return JsonResponse({"data": controls})
 
 
 @csrf_exempt
@@ -41,22 +94,44 @@ def iot_reading_ingest_view(request):
 def readings_view(request):
     try:
         limit = int(request.GET.get("limit", "20"))
+        page = int(request.GET.get("page", "1"))
     except ValueError:
-        return JsonResponse({"error": "limit harus integer"}, status=400)
+        return JsonResponse({"error": "limit dan page harus integer"}, status=400)
     limit = max(1, min(limit, 100))
-    rows = SensorReading.objects.select_related("block").all()[:limit]
-    return JsonResponse({"data": [serialize_reading(item) for item in rows], "limit": limit})
+    page = max(1, page)
+    offset = (page - 1) * limit
+    queryset = SensorReading.objects.select_related("block").all()
+    total = queryset.count()
+    rows = queryset[offset:offset + limit]
+    return JsonResponse({
+        "data": [serialize_reading(item) for item in rows],
+        "limit": limit,
+        "page": page,
+        "total": total,
+        "total_pages": (total + limit - 1) // limit,
+    })
 
 
 @require_GET
 def transactions_view(request):
     try:
         limit = int(request.GET.get("limit", "20"))
+        page = int(request.GET.get("page", "1"))
     except ValueError:
-        return JsonResponse({"error": "limit harus integer"}, status=400)
+        return JsonResponse({"error": "limit dan page harus integer"}, status=400)
     limit = max(1, min(limit, 100))
-    rows = IngestTransaction.objects.all()[:limit]
-    return JsonResponse({"data": [serialize_transaction(item) for item in rows], "limit": limit})
+    page = max(1, page)
+    offset = (page - 1) * limit
+    queryset = IngestTransaction.objects.all()
+    total = queryset.count()
+    rows = queryset[offset:offset + limit]
+    return JsonResponse({
+        "data": [serialize_transaction(item) for item in rows],
+        "limit": limit,
+        "page": page,
+        "total": total,
+        "total_pages": (total + limit - 1) // limit,
+    })
 
 
 @require_GET
@@ -69,5 +144,23 @@ def transaction_detail_view(request, transaction_id: str):
 
 @require_GET
 def blockchain_chain_view(request):
-    rows = LedgerBlock.objects.select_related("reading").all()
-    return JsonResponse({"data": [serialize_block(item) for item in rows], "verification": verify_chain()})
+    try:
+        limit = int(request.GET.get("limit", "20"))
+        page = int(request.GET.get("page", "1"))
+    except ValueError:
+        return JsonResponse({"error": "limit dan page harus integer"}, status=400)
+
+    limit = max(1, min(limit, 100))
+    page = max(1, page)
+    offset = (page - 1) * limit
+    queryset = LedgerBlock.objects.select_related("reading").all()
+    total = queryset.count()
+    rows = queryset[offset:offset + limit]
+    return JsonResponse({
+        "data": [serialize_block(item) for item in rows],
+        "verification": verify_chain(),
+        "limit": limit,
+        "page": page,
+        "total": total,
+        "total_pages": (total + limit - 1) // limit,
+    })

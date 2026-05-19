@@ -64,3 +64,14 @@ class OnchainAnchor(models.Model):
 
     class Meta:
         ordering = ["-id"]
+
+
+class ManualControl(models.Model):
+    control_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255)
+    status = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["control_id"]

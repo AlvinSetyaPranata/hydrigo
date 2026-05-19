@@ -21,7 +21,7 @@ export default function ControlScreen() {
   const [savingControlId, setSavingControlId] = useState('');
   const [savingMode, setSavingMode] = useState('');
   const [error, setError] = useState('');
-  const [brokerState, setBrokerState] = useState('Connecting');
+  const [brokerState, setBrokerState] = useState('Menghubungkan');
 
   async function loadControls(isRefresh = false) {
     if (isRefresh) {
@@ -55,10 +55,10 @@ export default function ControlScreen() {
 
     try {
       cleanup = attachBrokerListeners({
-        onConnect: () => setBrokerState('Connected'),
-        onReconnect: () => setBrokerState('Reconnecting'),
+        onConnect: () => setBrokerState('Terhubung'),
+        onReconnect: () => setBrokerState('Menghubungkan ulang'),
         onClose: () => setBrokerState('Offline'),
-        onError: () => setBrokerState('Error'),
+        onError: () => setBrokerState('Gangguan koneksi'),
       });
 
       const unsubscribeStatus = subscribeTopic(mqttTopics.status, (message) => {
@@ -76,7 +76,7 @@ export default function ControlScreen() {
             setManualControls(payload.controls);
           }
         } catch {
-          setBrokerState('Payload Error');
+          setBrokerState('Data tidak valid');
         }
       });
 
@@ -85,7 +85,7 @@ export default function ControlScreen() {
         cleanup();
       };
     } catch (mqttError) {
-      setBrokerState('Unavailable');
+      setBrokerState('Tidak tersedia');
       setError((mqttError as Error).message);
     }
 
@@ -152,12 +152,12 @@ export default function ControlScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadControls(true).catch(() => undefined)} />}>
       <View style={styles.hero}>
         <View style={styles.heroGlow} />
-        <ThemedText style={styles.kicker}>Automation Center</ThemedText>
+        <ThemedText style={styles.kicker}>Pusat Kontrol</ThemedText>
         <ThemedText type="title" style={styles.title}>
-          Kontrol mobile yang langsung terhubung ke backend Hydrigo
+          Atur perangkat dan mode nutrisi dari aplikasi
         </ThemedText>
         <ThemedText style={styles.subtitle}>
-          Tab ini tidak lagi memakai state lokal. Semua perubahan switch dan mode nutrisi dikirim ke API yang sama dengan dashboard web.
+          Setiap perubahan dikirim ke backend, lalu disiarkan lagi melalui MQTT agar status di seluruh sistem tetap sinkron.
         </ThemedText>
 
         <View style={styles.modeRow}>
@@ -176,7 +176,7 @@ export default function ControlScreen() {
           <ThemedText type="subtitle" style={styles.sectionTitle}>
             Kontrol manual
           </ThemedText>
-          <ThemedText style={styles.sectionHint}>Backend synced</ThemedText>
+          <ThemedText style={styles.sectionHint}>Tersinkron dengan backend</ThemedText>
         </View>
 
         {manualControls.map((item) => {
@@ -206,6 +206,14 @@ export default function ControlScreen() {
                 </View>
                 <View style={[styles.stateDot, item.status ? styles.stateOn : styles.stateOff]} />
               </View>
+              <Pressable
+                style={[styles.actionButton, item.status ? styles.actionButtonStop : styles.actionButtonStart, isSaving ? styles.actionButtonDisabled : null]}
+                onPress={() => handleToggleControl(item).catch(() => undefined)}
+                disabled={isSaving}>
+                <ThemedText style={styles.actionButtonText}>
+                  {isSaving ? 'Memproses...' : item.status ? 'Matikan Pompa' : 'Nyalakan Pompa'}
+                </ThemedText>
+              </Pressable>
             </View>
           );
         })}
@@ -216,7 +224,7 @@ export default function ControlScreen() {
           <ThemedText type="subtitle" style={styles.sectionTitle}>
             Mode nutrisi
           </ThemedText>
-          <ThemedText style={styles.sectionHint}>POST /controls/nutrient-mode</ThemedText>
+          <ThemedText style={styles.sectionHint}>Pilih sesuai tahap tanam</ThemedText>
         </View>
 
         <View style={styles.modeGrid}>
@@ -245,19 +253,19 @@ export default function ControlScreen() {
         </ThemedText>
         <View style={styles.sopRow}>
           <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Dashboard dan mobile memakai endpoint dasar yang sama.</ThemedText>
+          <ThemedText style={styles.sopText}>Dashboard web dan aplikasi mobile memakai backend yang sama.</ThemedText>
         </View>
         <View style={styles.sopRow}>
           <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Untuk Android fisik, isi `EXPO_PUBLIC_API_BASE_URL` jika host Expo tidak bisa dideteksi.</ThemedText>
+          <ThemedText style={styles.sopText}>Pada perangkat Android fisik, isi `EXPO_PUBLIC_API_BASE_URL` jika host Expo tidak terdeteksi otomatis.</ThemedText>
         </View>
         <View style={styles.sopRow}>
           <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Broker MQTT aktif: {getBrokerUrl() ?? 'belum terset'}</ThemedText>
+          <ThemedText style={styles.sopText}>Broker MQTT aktif: {getBrokerUrl() ?? 'belum diatur'}</ThemedText>
         </View>
         <View style={styles.sopRow}>
           <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Base URL aktif: {getApiBaseUrl() ?? 'belum terset'}</ThemedText>
+          <ThemedText style={styles.sopText}>Base URL aktif: {getApiBaseUrl() ?? 'belum diatur'}</ThemedText>
         </View>
       </View>
 
@@ -401,6 +409,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 12,
+  },
+  actionButton: {
+    minHeight: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  actionButtonStart: {
+    backgroundColor: '#2f7d32',
+  },
+  actionButtonStop: {
+    backgroundColor: '#a63f18',
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
+  },
+  actionButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   controlCopy: {
     flex: 1,
