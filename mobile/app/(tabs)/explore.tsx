@@ -20,6 +20,7 @@ const controlViews = [
 export default function ControlScreen() {
   const [manualControls, setManualControls] = useState<ManualControl[]>([]);
   const [nutrientMode, setNutrientModeState] = useState('');
+  const [devicePhase, setDevicePhase] = useState('Menunggu data perangkat');
   const [activeView, setActiveView] = useState<(typeof controlViews)[number]['id']>('manual');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,6 +40,7 @@ export default function ControlScreen() {
       const dashboard = await fetchDashboard();
       setManualControls(dashboard.manualControls ?? []);
       setNutrientModeState(dashboard.nutrientMode ?? '');
+      setDevicePhase(dashboard.devicePhase ?? 'Menunggu data perangkat');
       setError('');
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Gagal memuat data kontrol.');
@@ -195,6 +197,10 @@ export default function ControlScreen() {
         </View>
         <View style={styles.modeBadge}>
             <ThemedText style={styles.modeBadgeText}>{brokerState}</ThemedText>
+        </View>
+        <View style={styles.phaseBanner}>
+          <ThemedText style={styles.phaseLabel}>Fase perangkat IoT</ThemedText>
+          <ThemedText style={styles.phaseValue}>{devicePhase}</ThemedText>
         </View>
       </View>
       </View>
@@ -439,6 +445,23 @@ const styles = StyleSheet.create({
     color: '#f6ffed',
     fontWeight: '800',
     fontSize: 12,
+  },
+  phaseBanner: {
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#eef7e6',
+    gap: 4,
+  },
+  phaseLabel: {
+    color: '#648165',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
+  phaseValue: {
+    color: '#17301a',
+    fontSize: 18,
+    fontWeight: '800',
   },
   viewTabs: {
     flexDirection: 'row',

@@ -67,6 +67,7 @@ export type DashboardData = {
   chartBars: ChartBar[];
   manualControls: ManualControl[];
   nutrientMode: string;
+  devicePhase: string;
 };
 
 export type LedgerBlock = {
@@ -107,6 +108,7 @@ type Reading = {
   light_lux: number;
   pump_prediction: number | null;
   pump_status: boolean | null;
+  device_phase: string | null;
   recorded_at: string;
   received_at: string;
   signature: string | null;
@@ -338,6 +340,7 @@ function buildDashboardData(readings: Reading[]): DashboardData {
       chartBars: [],
       manualControls: [],
       nutrientMode: 'Belum tersedia',
+      devicePhase: 'Menunggu data perangkat',
     };
   }
 
@@ -425,6 +428,7 @@ function buildDashboardData(readings: Reading[]): DashboardData {
     chartBars,
     manualControls: [],
     nutrientMode,
+    devicePhase: latest.device_phase || (latest.pump_status ? 'Pompa aktif' : 'Siaga'),
   };
 }
 

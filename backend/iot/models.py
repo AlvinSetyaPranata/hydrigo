@@ -32,6 +32,7 @@ class SensorReading(models.Model):
     light_lux = models.FloatField()
     pump_prediction = models.IntegerField(null=True, blank=True)
     pump_status = models.BooleanField(null=True, blank=True)
+    device_phase = models.CharField(max_length=32, null=True, blank=True)
     recorded_at = models.DateTimeField()
     received_at = models.DateTimeField()
     signature = models.TextField(null=True, blank=True)

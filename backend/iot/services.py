@@ -71,6 +71,7 @@ class ReadingPayload:
     light_lux: float
     pump_prediction: int | None
     pump_status: bool | None
+    device_phase: str | None
     recorded_at: datetime
     signature: str | None = None
 
@@ -107,6 +108,7 @@ class ReadingPayload:
             water_distance_cm = first_present(data, "water_distance_cm", "jarak", "distance_cm", "water_distance_cm")
             pump_prediction = first_present(data, "pump_prediction", "prediksiRelay")
             pump_status = first_present(data, "pump_status", "pompaStatus")
+            device_phase = first_present(data, "device_phase", "devicePhase")
 
             payload = cls(
                 device_id=str(first_present(data, "device_id")).strip(),
@@ -121,6 +123,7 @@ class ReadingPayload:
                 light_lux=float(light_lux),
                 pump_prediction=None if pump_prediction is None else int(pump_prediction),
                 pump_status=parse_optional_bool(pump_status),
+                device_phase=None if device_phase is None else str(device_phase).strip(),
                 recorded_at=parse_iso_timestamp(data.get("recorded_at") or utc_now().isoformat()),
                 signature=None if data.get("signature") is None else str(data["signature"]),
             )
@@ -168,6 +171,7 @@ def canonical_payload(payload: ReadingPayload) -> str:
             "lettuce_bed_id": payload.lettuce_bed_id,
             "light_lux": payload.light_lux,
             "ph": payload.ph,
+            "device_phase": payload.device_phase,
             "pump_prediction": payload.pump_prediction,
             "pump_status": payload.pump_status,
             "recorded_at": payload.recorded_at.astimezone(timezone.utc).replace(microsecond=0).isoformat(),
@@ -219,6 +223,7 @@ def serialize_reading(item: SensorReading) -> dict[str, Any]:
         "light_lux": item.light_lux,
         "pump_prediction": item.pump_prediction,
         "pump_status": item.pump_status,
+        "device_phase": item.device_phase,
         "recorded_at": item.recorded_at.isoformat(),
         "received_at": item.received_at.isoformat(),
         "signature": item.signature,
@@ -280,6 +285,7 @@ def ingest_reading(data: dict[str, Any]) -> dict[str, Any]:
         light_lux=payload.light_lux,
         pump_prediction=payload.pump_prediction,
         pump_status=payload.pump_status,
+        device_phase=payload.device_phase,
         recorded_at=payload.recorded_at,
         received_at=received_at,
         signature=payload.signature,
@@ -333,6 +339,7 @@ def verify_chain() -> dict[str, Any]:
             light_lux=block.reading.light_lux,
             pump_prediction=block.reading.pump_prediction,
             pump_status=block.reading.pump_status,
+            device_phase=block.reading.device_phase,
             recorded_at=block.reading.recorded_at,
             signature=block.reading.signature,
         )
