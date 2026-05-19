@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import {
@@ -12,10 +12,15 @@ import {
 import { attachBrokerListeners, getBrokerUrl, mqttTopics, publishTopic, subscribeTopic } from '@/lib/mqttClient';
 
 const nutrientModes = ['Semai', 'Vegetatif', 'Finishing'];
+const controlViews = [
+  { id: 'manual', label: 'Manual' },
+  { id: 'automatic', label: 'Otomatis' },
+] as const;
 
 export default function ControlScreen() {
   const [manualControls, setManualControls] = useState<ManualControl[]>([]);
   const [nutrientMode, setNutrientModeState] = useState('');
+  const [activeView, setActiveView] = useState<(typeof controlViews)[number]['id']>('manual');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingControlId, setSavingControlId] = useState('');
@@ -130,6 +135,29 @@ export default function ControlScreen() {
     }
   }
 
+  function confirmUpdateMode(mode: string) {
+    if (mode === nutrientMode || savingMode) {
+      return;
+    }
+
+    Alert.alert(
+      'Ubah mode otomatis?',
+      `Mode akan diganti ke ${mode}. Lanjutkan perubahan?`,
+      [
+        {
+          text: 'Batal',
+          style: 'cancel',
+        },
+        {
+          text: 'Ubah',
+          onPress: () => {
+            handleUpdateMode(mode).catch(() => undefined);
+          },
+        },
+      ],
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.stateScreen}>
@@ -171,6 +199,24 @@ export default function ControlScreen() {
       </View>
       </View>
 
+      <View style={styles.viewTabs}>
+        {controlViews.map((item) => {
+          const selected = activeView === item.id;
+
+          return (
+            <Pressable
+              key={item.id}
+              style={[styles.viewTab, selected ? styles.viewTabActive : null]}
+              onPress={() => setActiveView(item.id)}>
+              <ThemedText style={[styles.viewTabText, selected ? styles.viewTabTextActive : null]}>
+                {item.label}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {activeView === 'manual' ? (
       <View style={styles.controlSection}>
         <View style={styles.sectionHeader}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
@@ -178,6 +224,10 @@ export default function ControlScreen() {
           </ThemedText>
           <ThemedText style={styles.sectionHint}>Tersinkron dengan backend</ThemedText>
         </View>
+
+        <ThemedText style={styles.panelLead}>
+          Gunakan mode ini untuk menyalakan atau mematikan pompa air secara langsung dari aplikasi.
+        </ThemedText>
 
         {manualControls.map((item) => {
           const isSaving = savingControlId === item.id;
@@ -218,14 +268,18 @@ export default function ControlScreen() {
           );
         })}
       </View>
-
+      ) : (
       <View style={styles.scheduleCard}>
         <View style={styles.sectionHeader}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Mode nutrisi
+          <ThemedText type="subtitle" style={styles.automaticTitle}>
+            Mode otomatis
           </ThemedText>
-          <ThemedText style={styles.sectionHint}>Pilih sesuai tahap tanam</ThemedText>
+          <ThemedText style={styles.automaticHint}>Atur strategi nutrisi</ThemedText>
         </View>
+
+        <ThemedText style={styles.automaticLead}>
+          Pilih mode otomatis sesuai fase pertumbuhan. Sistem akan memakai mode ini sebagai acuan operasi normal.
+        </ThemedText>
 
         <View style={styles.modeGrid}>
           {nutrientModes.map((mode) => {
@@ -236,7 +290,7 @@ export default function ControlScreen() {
               <Pressable
                 key={mode}
                 style={[styles.modeOption, selected ? styles.modeOptionSelected : null]}
-                onPress={() => handleUpdateMode(mode).catch(() => undefined)}
+                onPress={() => confirmUpdateMode(mode)}
                 disabled={Boolean(savingMode)}>
                 <ThemedText style={[styles.modeOptionText, selected ? styles.modeOptionTextSelected : null]}>
                   {isSaving ? 'Menyimpan...' : mode}
@@ -245,7 +299,15 @@ export default function ControlScreen() {
             );
           })}
         </View>
+
+        <View style={styles.autoInfoCard}>
+          <ThemedText style={styles.autoInfoTitle}>Mode aktif: {nutrientMode || '-'}</ThemedText>
+          <ThemedText style={styles.autoInfoText}>
+            Jika backend mode nutrisi belum tersedia, pilihan ini tetap bisa dipakai sebagai acuan tampilan mobile dan sinkronisasi MQTT.
+          </ThemedText>
+        </View>
       </View>
+      )}
 
       <View style={styles.sopCard}>
         <ThemedText type="subtitle" style={styles.sopTitle}>
@@ -378,6 +440,32 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 12,
   },
+  viewTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#dfead7',
+    borderRadius: 18,
+    padding: 6,
+    gap: 8,
+  },
+  viewTab: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  viewTabActive: {
+    backgroundColor: '#17301a',
+  },
+  viewTabText: {
+    color: '#49604d',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  viewTabTextActive: {
+    color: '#f6ffed',
+  },
   controlSection: {
     borderRadius: 28,
     padding: 18,
@@ -397,6 +485,11 @@ const styles = StyleSheet.create({
     color: '#b9d5b8',
     fontSize: 12,
     fontWeight: '800',
+  },
+  panelLead: {
+    color: '#d3e7d2',
+    lineHeight: 22,
+    fontSize: 14,
   },
   controlCard: {
     borderRadius: 24,
@@ -490,6 +583,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     gap: 14,
   },
+  automaticTitle: {
+    color: '#17301a',
+  },
+  automaticHint: {
+    color: '#5a6c5b',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  automaticLead: {
+    color: '#546756',
+    lineHeight: 22,
+    fontSize: 14,
+  },
   modeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -510,6 +616,20 @@ const styles = StyleSheet.create({
   },
   modeOptionTextSelected: {
     color: '#f5fff0',
+  },
+  autoInfoCard: {
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#eef4e8',
+    gap: 6,
+  },
+  autoInfoTitle: {
+    color: '#17301a',
+    fontWeight: '800',
+  },
+  autoInfoText: {
+    color: '#546756',
+    lineHeight: 20,
   },
   sopCard: {
     borderRadius: 28,

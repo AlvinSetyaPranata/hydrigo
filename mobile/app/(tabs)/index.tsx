@@ -176,8 +176,8 @@ export default function DashboardScreen() {
         </ThemedText>
 
         <View style={styles.heroStats}>
-          {heroStats.map((item) => (
-            <View key={item.label} style={styles.heroStat}>
+          {heroStats.map((item, index) => (
+            <View key={`${item.label}-${index}`} style={styles.heroStat}>
               <ThemedText style={styles.heroStatValue}>{item.value}</ThemedText>
               <ThemedText style={styles.heroStatLabel}>{item.label}</ThemedText>
             </View>
@@ -214,8 +214,8 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.summaryGrid}>
-        {dashboard.summaryCards.map((card) => (
-          <View key={card.label} style={styles.summaryCard}>
+        {dashboard.summaryCards.map((card, index) => (
+          <View key={`${card.label}-${index}`} style={styles.summaryCard}>
             <ThemedText style={styles.summaryLabel}>{card.label}</ThemedText>
             <ThemedText style={styles.summaryValue}>{card.value}</ThemedText>
             <ThemedText style={styles.summaryNote}>{card.note}</ThemedText>
@@ -231,8 +231,8 @@ export default function DashboardScreen() {
           <ThemedText style={styles.sectionCaption}>{dashboard.lettuceBeds.length} varietas</ThemedText>
         </View>
 
-        {dashboard.lettuceBeds.map((plant) => (
-          <View key={plant.name} style={styles.plantCard}>
+        {dashboard.lettuceBeds.map((plant, index) => (
+          <View key={`${plant.name}-${plant.zone}-${index}`} style={styles.plantCard}>
             <View style={styles.plantHead}>
               <View style={styles.plantCopy}>
                 <ThemedText style={styles.plantTitle}>{plant.name}</ThemedText>
@@ -279,8 +279,8 @@ export default function DashboardScreen() {
             </ThemedText>
             <ThemedText style={styles.sectionCaption}>Disusun dari backend</ThemedText>
           </View>
-          {dashboard.schedule.map((item) => (
-            <View key={item.task} style={styles.listRow}>
+          {dashboard.schedule.map((item, index) => (
+            <View key={`${item.task}-${item.due}-${index}`} style={styles.listRow}>
               <View style={styles.listCopy}>
                 <ThemedText style={styles.listTitle}>{item.task}</ThemedText>
                 <ThemedText style={styles.listMeta}>{item.owner}</ThemedText>

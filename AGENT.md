@@ -218,6 +218,7 @@ Backend deployment/runtime notes:
 - `docker-compose.deploy.yml` runs a single app container named `backend`.
 - Nginx forwards HTTP traffic to that one backend service.
 - Route separation between hydroponics and drip happens inside Django, not by separate backend containers.
+- Current VPS host/IP for deployed access is `109.110.188.181`.
 
 ### Frontend env
 
@@ -236,6 +237,12 @@ Default frontend behavior:
 
 - API defaults to `/api/hydroponics`
 - MQTT defaults to `/mqtt` on the current host
+
+### Mobile runtime defaults
+
+- Mobile should use VPS host `http://109.110.188.181` as the default base host unless the task explicitly changes environments.
+- Hydroponics mobile API requests should target `http://109.110.188.181/api/hydroponics/...`.
+- When deriving MQTT from the API base host, prefer the same VPS host unless an explicit broker URL overrides it.
 
 ## Development Guidance
 
