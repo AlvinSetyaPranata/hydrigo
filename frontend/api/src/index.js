@@ -1,6 +1,7 @@
 import express from 'express'
 import { Queue } from 'bullmq'
 import Redis from 'ioredis'
+import mqtt from 'mqtt'
 import pg from 'pg'
 
 const app = express()
@@ -11,9 +12,72 @@ const port = Number(process.env.PORT || 3001)
 const redisUrl = process.env.REDIS_URL || 'redis://redis:6379'
 const databaseUrl =
   process.env.DATABASE_URL || 'postgresql://hydrigo:hydrigo@postgres:5432/hydrigo'
+const mqttUrl = process.env.MQTT_URL || 'mqtt://mosquitto:1883'
+const mqttSensorTopic = process.env.MQTT_SENSOR_TOPIC || 'hydrigo/lettuce/sensor'
+const hydrigoForwardUrl =
+  process.env.HYDRIGO_FORWARD_URL ||
+  'http://109.110.188.181/api/hydroponics/api/v1/iot/readings'
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
 const ingestQueue = new Queue('iot-ingest', { connection: redis })
 const pool = new Pool({ connectionString: databaseUrl })
+const mqttClient = mqtt.connect(mqttUrl, {
+  clientId: `hydrigo-api-bridge-${Math.random().toString(16).slice(2, 10)}`,
+  reconnectPeriod: 3000,
+  connectTimeout: 5000,
+})
+
+async function forwardMqttPayloadToApi(payload) {
+  const response = await fetch(hydrigoForwardUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const body = await response.text()
+
+  if (!response.ok) {
+    throw new Error(`forward failed: ${response.status} ${response.statusText} ${body}`)
+  }
+
+  return body
+}
+
+function attachMqttBridge() {
+  mqttClient.on('connect', () => {
+    console.log(`MQTT bridge connected to ${mqttUrl}`)
+    mqttClient.subscribe(mqttSensorTopic, (error) => {
+      if (error) {
+        console.error(`MQTT subscribe failed for ${mqttSensorTopic}:`, error.message)
+      } else {
+        console.log(`MQTT bridge subscribed to ${mqttSensorTopic}`)
+      }
+    })
+  })
+
+  mqttClient.on('reconnect', () => {
+    console.log('MQTT bridge reconnecting')
+  })
+
+  mqttClient.on('error', (error) => {
+    console.error('MQTT bridge error:', error.message)
+  })
+
+  mqttClient.on('message', async (topic, rawPayload) => {
+    if (topic !== mqttSensorTopic) {
+      return
+    }
+
+    try {
+      const payload = JSON.parse(rawPayload.toString())
+      await forwardMqttPayloadToApi(payload)
+      console.log(`MQTT payload forwarded to API from topic ${topic}`)
+    } catch (error) {
+      console.error('MQTT to API forward failed:', error.message)
+    }
+  })
+}
 
 async function getDashboardFixture() {
   const result = await pool.query(
@@ -159,3 +223,5 @@ app.post('/controls/nutrient-mode', async (req, res) => {
 app.listen(port, () => {
   console.log(`HTTP ingest API listening on ${port}`)
 })
+
+attachMqttBridge()

@@ -192,17 +192,18 @@ export default function ControlScreen() {
 
         <View style={styles.modeRow}>
           <View style={styles.modeCard}>
-          <ThemedText style={styles.modeLabel}>Mode nutrisi aktif</ThemedText>
-          <ThemedText style={styles.modeValue}>{nutrientMode || '-'}</ThemedText>
-        </View>
-        <View style={styles.modeBadge}>
+            <ThemedText style={styles.modeLabel}>Mode nutrisi aktif</ThemedText>
+            <ThemedText style={styles.modeValue}>{nutrientMode || '-'}</ThemedText>
+          </View>
+          <View style={styles.modeBadge}>
             <ThemedText style={styles.modeBadgeText}>{brokerState}</ThemedText>
+          </View>
         </View>
+
         <View style={styles.phaseBanner}>
           <ThemedText style={styles.phaseLabel}>Fase perangkat IoT</ThemedText>
           <ThemedText style={styles.phaseValue}>{devicePhase}</ThemedText>
         </View>
-      </View>
       </View>
 
       <View style={styles.viewTabs}>
@@ -223,96 +224,98 @@ export default function ControlScreen() {
       </View>
 
       {activeView === 'manual' ? (
-      <View style={styles.controlSection}>
-        <View style={styles.sectionHeader}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Kontrol manual
+        <View style={styles.controlSection}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle" style={styles.sectionTitle}>
+              Kontrol manual
+            </ThemedText>
+            <ThemedText style={styles.sectionHint}>Tersinkron dengan backend</ThemedText>
+          </View>
+
+          <ThemedText style={styles.panelLead}>
+            Gunakan mode ini untuk menyalakan atau mematikan pompa air secara langsung dari aplikasi.
           </ThemedText>
-          <ThemedText style={styles.sectionHint}>Tersinkron dengan backend</ThemedText>
-        </View>
 
-        <ThemedText style={styles.panelLead}>
-          Gunakan mode ini untuk menyalakan atau mematikan pompa air secara langsung dari aplikasi.
-        </ThemedText>
-
-        {manualControls.map((item) => {
-          const isSaving = savingControlId === item.id;
-
-          return (
-            <View key={item.id} style={styles.controlCard}>
-              <View style={styles.controlTop}>
-                <View style={styles.controlCopy}>
-                  <ThemedText style={styles.controlTitle}>{item.name}</ThemedText>
-                  <ThemedText style={styles.controlDesc}>{item.description}</ThemedText>
-                </View>
-                <View style={styles.switchWrap}>
-                  <ThemedText style={styles.switchState}>{isSaving ? '...' : item.status ? 'ON' : 'OFF'}</ThemedText>
-                  <Switch
-                    value={item.status}
-                    onValueChange={() => handleToggleControl(item).catch(() => undefined)}
-                    disabled={isSaving}
-                    trackColor={{ false: '#cad5c9', true: '#8ed16d' }}
-                    thumbColor={item.status ? '#ffffff' : '#f4f4f4'}
-                  />
-                </View>
-              </View>
-              <View style={styles.metaRow}>
-                <View style={[styles.modePill, item.status ? styles.modePillOn : styles.modePillOff]}>
-                  <ThemedText style={styles.modePillText}>{item.status ? 'Aktif' : 'Nonaktif'}</ThemedText>
-                </View>
-                <View style={[styles.stateDot, item.status ? styles.stateOn : styles.stateOff]} />
-              </View>
-              <Pressable
-                style={[styles.actionButton, item.status ? styles.actionButtonStop : styles.actionButtonStart, isSaving ? styles.actionButtonDisabled : null]}
-                onPress={() => handleToggleControl(item).catch(() => undefined)}
-                disabled={isSaving}>
-                <ThemedText style={styles.actionButtonText}>
-                  {isSaving ? 'Memproses...' : item.status ? 'Matikan Pompa' : 'Nyalakan Pompa'}
-                </ThemedText>
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
-      ) : (
-      <View style={styles.scheduleCard}>
-        <View style={styles.sectionHeader}>
-          <ThemedText type="subtitle" style={styles.automaticTitle}>
-            Mode otomatis
-          </ThemedText>
-          <ThemedText style={styles.automaticHint}>Atur strategi nutrisi</ThemedText>
-        </View>
-
-        <ThemedText style={styles.automaticLead}>
-          Pilih mode otomatis sesuai fase pertumbuhan. Sistem akan memakai mode ini sebagai acuan operasi normal.
-        </ThemedText>
-
-        <View style={styles.modeGrid}>
-          {nutrientModes.map((mode) => {
-            const selected = nutrientMode === mode;
-            const isSaving = savingMode === mode;
+          {manualControls.map((item) => {
+            const isSaving = savingControlId === item.id;
 
             return (
-              <Pressable
-                key={mode}
-                style={[styles.modeOption, selected ? styles.modeOptionSelected : null]}
-                onPress={() => confirmUpdateMode(mode)}
-                disabled={Boolean(savingMode)}>
-                <ThemedText style={[styles.modeOptionText, selected ? styles.modeOptionTextSelected : null]}>
-                  {isSaving ? 'Menyimpan...' : mode}
-                </ThemedText>
-              </Pressable>
+              <View key={item.id} style={styles.controlCard}>
+                <View style={styles.controlTop}>
+                  <View style={styles.controlCopy}>
+                    <ThemedText style={styles.controlTitle}>{item.name}</ThemedText>
+                    <ThemedText style={styles.controlDesc}>{item.description}</ThemedText>
+                  </View>
+                  <View style={styles.switchWrap}>
+                    <ThemedText style={styles.switchState}>{isSaving ? '...' : item.status ? 'ON' : 'OFF'}</ThemedText>
+                    <Switch
+                      value={item.status}
+                      onValueChange={() => handleToggleControl(item).catch(() => undefined)}
+                      disabled={isSaving}
+                      trackColor={{ false: '#cad5c9', true: '#8ed16d' }}
+                      thumbColor={item.status ? '#ffffff' : '#f4f4f4'}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.metaRow}>
+                  <View style={[styles.modePill, item.status ? styles.modePillOn : styles.modePillOff]}>
+                    <ThemedText style={styles.modePillText}>{item.status ? 'Aktif' : 'Nonaktif'}</ThemedText>
+                  </View>
+                  <View style={[styles.stateDot, item.status ? styles.stateOn : styles.stateOff]} />
+                </View>
+
+                <Pressable
+                  style={[styles.actionButton, item.status ? styles.actionButtonStop : styles.actionButtonStart, isSaving ? styles.actionButtonDisabled : null]}
+                  onPress={() => handleToggleControl(item).catch(() => undefined)}
+                  disabled={isSaving}>
+                  <ThemedText style={styles.actionButtonText}>
+                    {isSaving ? 'Memproses...' : item.status ? 'Matikan Pompa' : 'Nyalakan Pompa'}
+                  </ThemedText>
+                </Pressable>
+              </View>
             );
           })}
         </View>
+      ) : (
+        <View style={styles.scheduleCard}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle" style={styles.automaticTitle}>
+              Mode otomatis
+            </ThemedText>
+            <ThemedText style={styles.automaticHint}>Atur strategi nutrisi</ThemedText>
+          </View>
 
-        <View style={styles.autoInfoCard}>
-          <ThemedText style={styles.autoInfoTitle}>Mode aktif: {nutrientMode || '-'}</ThemedText>
-          <ThemedText style={styles.autoInfoText}>
-            Jika backend mode nutrisi belum tersedia, pilihan ini tetap bisa dipakai sebagai acuan tampilan mobile dan sinkronisasi MQTT.
+          <ThemedText style={styles.automaticLead}>
+            Pilih mode otomatis sesuai fase pertumbuhan. Sistem akan memakai mode ini sebagai acuan operasi normal.
           </ThemedText>
+
+          <View style={styles.modeGrid}>
+            {nutrientModes.map((mode) => {
+              const selected = nutrientMode === mode;
+              const isSaving = savingMode === mode;
+
+              return (
+                <Pressable
+                  key={mode}
+                  style={[styles.modeOption, selected ? styles.modeOptionSelected : null]}
+                  onPress={() => confirmUpdateMode(mode)}
+                  disabled={Boolean(savingMode)}>
+                  <ThemedText style={[styles.modeOptionText, selected ? styles.modeOptionTextSelected : null]}>
+                    {isSaving ? 'Menyimpan...' : mode}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.autoInfoCard}>
+            <ThemedText style={styles.autoInfoTitle}>Mode aktif: {nutrientMode || '-'}</ThemedText>
+            <ThemedText style={styles.autoInfoText}>
+              Jika backend mode nutrisi belum tersedia, pilihan ini tetap bisa dipakai sebagai acuan tampilan mobile dan sinkronisasi MQTT.
+            </ThemedText>
+          </View>
         </View>
-      </View>
       )}
 
       <View style={styles.sopCard}>
@@ -412,7 +415,7 @@ const styles = StyleSheet.create({
   modeRow: {
     marginTop: 4,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 12,
   },
@@ -440,6 +443,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     backgroundColor: '#17301a',
+    alignSelf: 'flex-start',
   },
   modeBadgeText: {
     color: '#f6ffed',
@@ -451,6 +455,7 @@ const styles = StyleSheet.create({
     padding: 14,
     backgroundColor: '#eef7e6',
     gap: 4,
+    width: '100%',
   },
   phaseLabel: {
     color: '#648165',

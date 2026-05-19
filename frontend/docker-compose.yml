@@ -26,9 +26,13 @@ services:
       PORT: 3001
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://hydrigo:hydrigo@postgres:5432/hydrigo
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_SENSOR_TOPIC: hydrigo/lettuce/sensor
+      HYDRIGO_FORWARD_URL: ${HYDRIGO_FORWARD_URL:-http://109.110.188.181/api/hydroponics/api/v1/iot/readings}
     depends_on:
       - redis
       - postgres
+      - mosquitto
     ports:
       - "${API_PORT:-3001}:3001"
     restart: unless-stopped

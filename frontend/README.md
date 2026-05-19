@@ -2,7 +2,7 @@
 
 Dashboard monitoring dan kontrol manual untuk budidaya selada hidroponik dengan arsitektur:
 
-`IoT HTTP -> Queue Broker -> Smart Contract -> PostgreSQL`
+`IoT MQTT -> Broker -> API Forwarder -> Backend API`
 
 ## Local Development
 
@@ -16,12 +16,10 @@ Frontend akan memakai backend API dari `VITE_API_BASE_URL`. Jika tidak diisi, de
 
 ## System Flow
 
-1. IoT device kirim data ke `POST /api/ingest`
-2. API enqueue payload ke Redis queue `iot-ingest`
-3. Worker consume queue dan submit ke smart contract `SensorRegistry`
-4. Setelah transaction confirmed, worker simpan hasil ke PostgreSQL
-5. Frontend membaca dashboard fixture dari PostgreSQL lewat `GET /api/dashboard`
-6. Frontend tetap bisa memakai MQTT untuk kontrol manual realtime
+1. IoT device publish payload ke topic MQTT `hydrigo/lettuce/sensor`
+2. Service `api` subscribe topic tersebut dan forward JSON ke backend API
+3. Backend API memproses ingest sensor
+4. Frontend tetap bisa memakai MQTT untuk kontrol manual realtime
 
 ## Docker Deployment
 
@@ -74,7 +72,7 @@ docker compose up -d --build
 3. Akses aplikasi:
 
 - Dashboard: `http://IP-VPS/`
-- HTTP ingest API: `http://IP-VPS:3001/ingest`
+- MQTT sensor topic: `hydrigo/lettuce/sensor`
 - MQTT TCP: `tcp://IP-VPS:1883`
 - MQTT WebSocket via reverse proxy: `ws://IP-VPS/mqtt`
 - PostgreSQL: `postgresql://hydrigo:hydrigo@IP-VPS:5432/hydrigo`
