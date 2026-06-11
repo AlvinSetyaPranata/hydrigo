@@ -6,6 +6,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +36,22 @@ def json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[st
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def html_attachment_response(
+    handler: BaseHTTPRequestHandler,
+    status: int,
+    body: str,
+    filename: str,
+    content_type: str = "application/vnd.ms-excel; charset=utf-8",
+) -> None:
+    encoded = body.encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+    handler.send_header("Content-Length", str(len(encoded)))
+    handler.end_headers()
+    handler.wfile.write(encoded)
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -361,6 +378,64 @@ def fetch_recent_readings(limit: int) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def fetch_all_readings() -> list[dict[str, Any]]:
+    with get_db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                sr.id,
+                sr.transaction_id,
+                sr.device_id,
+                sr.lettuce_bed_id,
+                sr.temperature_c,
+                sr.humidity_pct,
+                sr.ph,
+                sr.tds_ppm,
+                sr.water_level_pct,
+                sr.light_lux,
+                sr.recorded_at,
+                sr.received_at,
+                sr.signature,
+                b.block_index,
+                b.previous_hash,
+                b.payload_hash,
+                b.block_hash
+            FROM sensor_readings sr
+            LEFT JOIN blocks b ON b.reading_id = sr.id
+            ORDER BY sr.recorded_at DESC, sr.id DESC
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def build_excel_html(title: str, columns: list[str], rows: list[list[object]]) -> str:
+    head_cells = "".join(f"<th>{escape(column)}</th>" for column in columns)
+    body_rows = []
+
+    for row in rows:
+        cells = "".join(f"<td>{escape('' if value is None else str(value))}</td>" for value in row)
+        body_rows.append(f"<tr>{cells}</tr>")
+
+    return f"""<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>{escape(title)}</title>
+  </head>
+  <body>
+    <table border="1">
+      <thead>
+        <tr>{head_cells}</tr>
+      </thead>
+      <tbody>
+        {''.join(body_rows)}
+      </tbody>
+    </table>
+  </body>
+</html>
+"""
+
+
 def fetch_chain() -> list[dict[str, Any]]:
     with get_db_connection() as conn:
         rows = conn.execute(
@@ -642,6 +717,57 @@ class HydrigoHandler(BaseHTTPRequestHandler):
                 return
             limit = max(1, min(limit, 100))
             json_response(self, HTTPStatus.OK, {"data": fetch_recent_readings(limit), "limit": limit})
+            return
+
+        if parsed.path == "/api/v1/readings/export.xls":
+            columns = [
+                "reading_id",
+                "transaction_id",
+                "device_id",
+                "lettuce_bed_id",
+                "temperature_c",
+                "humidity_pct",
+                "ph",
+                "tds_ppm",
+                "water_level_pct",
+                "light_lux",
+                "recorded_at",
+                "received_at",
+                "signature",
+                "block_index",
+                "block_hash",
+                "previous_hash",
+                "payload_hash",
+            ]
+            readings = fetch_all_readings()
+            rows = [
+                [
+                    item["id"],
+                    item["transaction_id"],
+                    item["device_id"],
+                    item["lettuce_bed_id"],
+                    item["temperature_c"],
+                    item["humidity_pct"],
+                    item["ph"],
+                    item["tds_ppm"],
+                    item["water_level_pct"],
+                    item["light_lux"],
+                    item["recorded_at"],
+                    item["received_at"],
+                    item["signature"],
+                    item["block_index"],
+                    item["block_hash"],
+                    item["previous_hash"],
+                    item["payload_hash"],
+                ]
+                for item in readings
+            ]
+            html_attachment_response(
+                self,
+                HTTPStatus.OK,
+                build_excel_html("Hydrigo Dataset", columns, rows),
+                "hydrigo-dataset.xls",
+            )
             return
 
         if parsed.path == "/api/v1/blockchain/chain":

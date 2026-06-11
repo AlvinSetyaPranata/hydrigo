@@ -7,6 +7,32 @@ const CONTROL_TOPIC = 'hydrigo/lettuce/control'
 const SENSOR_TOPIC = 'hydrigo/lettuce/sensor'
 const STATUS_TOPIC = 'hydrigo/lettuce/status'
 
+function getActivityHref(item) {
+  const text = `${item.title} ${item.detail}`.toLowerCase()
+
+  if (
+    text.includes('nutrisi') ||
+    text.includes('ec') ||
+    text.includes('ph') ||
+    text.includes('suhu') ||
+    text.includes('air') ||
+    text.includes('humidity')
+  ) {
+    return '#sensor-panel'
+  }
+
+  if (
+    text.includes('selada') ||
+    text.includes('daun') ||
+    text.includes('rak') ||
+    text.includes('bed')
+  ) {
+    return '#beds-panel'
+  }
+
+  return '#schedule-panel'
+}
+
 function App() {
   const [dashboardData, setDashboardData] = useState(null)
   const [manualControls, setManualControls] = useState([])
@@ -300,7 +326,7 @@ function App() {
           </div>
         </article>
 
-        <article className="panel">
+        <article className="panel" id="sensor-panel">
           <div className="panel-head">
             <div>
               <span className="section-kicker">Kontrol Manual</span>
@@ -361,7 +387,7 @@ function App() {
           </div>
         </article>
 
-        <article className="panel panel-large">
+        <article className="panel panel-large" id="beds-panel">
           <div className="panel-head">
             <div>
               <span className="section-kicker">Rak Selada</span>
@@ -416,7 +442,7 @@ function App() {
           </div>
         </article>
 
-        <article className="panel">
+        <article className="panel" id="schedule-panel">
           <div className="panel-head">
             <div>
               <span className="section-kicker">Agenda Hari Ini</span>
@@ -447,13 +473,17 @@ function App() {
 
           <div className="activity-list">
             {dashboardData.activities.map((item) => (
-              <div key={`${item.time}-${item.title}`} className="activity-item">
+              <a
+                key={`${item.time}-${item.title}`}
+                className="activity-item activity-link"
+                href={getActivityHref(item)}
+              >
                 <span>{item.time}</span>
                 <div>
                   <strong>{item.title}</strong>
                   <p>{item.detail}</p>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         </article>

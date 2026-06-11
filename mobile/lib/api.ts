@@ -7,6 +7,7 @@ type SummaryCard = {
   label: string;
   value: string;
   note: string;
+  block?: DashboardBlockTarget;
 };
 
 type HeroStat = {
@@ -36,6 +37,25 @@ type Activity = {
   time: string;
   title: string;
   detail: string;
+  block?: DashboardBlockTarget;
+};
+
+export type DashboardBlockTarget = {
+  blockIndex: number;
+  readingId: number;
+  transactionId: string;
+  deviceId: string;
+  lettuceBedId: string;
+  payloadHash: string;
+  previousHash: string;
+  blockHash: string;
+  createdAt: string;
+  ph: number;
+  tdsPpm: number;
+  waterTemp: number;
+  airTemp: number | null;
+  humidity: number;
+  waterLevel: number;
 };
 
 type ScheduleItem = {
@@ -278,6 +298,10 @@ export function getLedgerBaseUrl() {
   return getApiBaseUrl();
 }
 
+export function getDatasetExcelDownloadUrl() {
+  return buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/readings/export.xls`);
+}
+
 function buildUrl(baseUrl: string | null, path: string) {
   if (!baseUrl) {
     const expoHost = getExpoHost();
@@ -373,10 +397,29 @@ function buildDashboardData(readings: Reading[]): DashboardData {
     };
   });
 
+  const buildBlockTarget = (reading: Reading): DashboardBlockTarget => ({
+    blockIndex: reading.block_index,
+    readingId: reading.id,
+    transactionId: reading.transaction_id,
+    deviceId: reading.device_id,
+    lettuceBedId: reading.lettuce_bed_id,
+    payloadHash: reading.payload_hash,
+    previousHash: reading.previous_hash,
+    blockHash: reading.block_hash,
+    createdAt: reading.recorded_at,
+    ph: reading.ph,
+    tdsPpm: reading.tds_ppm,
+    waterTemp: reading.temperature_c,
+    airTemp: reading.air_temperature_c,
+    humidity: reading.humidity_pct,
+    waterLevel: reading.water_level_pct,
+  });
+
   const activities: Activity[] = readings.slice(0, 5).map((reading) => ({
     time: formatDateTime(reading.recorded_at),
     title: `Reading ${reading.device_id}`,
     detail: `pH ${formatNumber(reading.ph)} • air ${formatNumber(reading.temperature_c)}°C • hash #${reading.block_index}`,
+    block: buildBlockTarget(reading),
   }));
 
   const schedule: ScheduleItem[] = bedReadings.slice(0, 3).map((reading, index) => ({
@@ -399,6 +442,7 @@ function buildDashboardData(readings: Reading[]): DashboardData {
         label: 'Reading terakhir',
         value: formatDateTime(latest.recorded_at),
         note: `Device ${latest.device_id} • transaksi ${latest.transaction_id}`,
+        block: buildBlockTarget(latest),
       },
       {
         label: 'Rata-rata pH',

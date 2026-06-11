@@ -1,31 +1,30 @@
+import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { useAuth } from '@/lib/auth';
 import {
   fetchDashboard,
   getApiBaseUrl,
   updateManualControl,
-  updateNutrientMode,
   type ManualControl,
 } from '@/lib/api';
-import { attachBrokerListeners, getBrokerUrl, mqttTopics, publishTopic, subscribeTopic } from '@/lib/mqttClient';
+import { attachBrokerListeners, mqttTopics, publishTopic, subscribeTopic } from '@/lib/mqttClient';
 
-const nutrientModes = ['Semai', 'Vegetatif', 'Finishing'];
 const controlViews = [
   { id: 'manual', label: 'Manual' },
   { id: 'automatic', label: 'Otomatis' },
 ] as const;
 
 export default function ControlScreen() {
+  const { user } = useAuth();
   const [manualControls, setManualControls] = useState<ManualControl[]>([]);
-  const [nutrientMode, setNutrientModeState] = useState('');
   const [devicePhase, setDevicePhase] = useState('Menunggu data perangkat');
   const [activeView, setActiveView] = useState<(typeof controlViews)[number]['id']>('manual');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingControlId, setSavingControlId] = useState('');
-  const [savingMode, setSavingMode] = useState('');
   const [error, setError] = useState('');
   const [brokerState, setBrokerState] = useState('Menghubungkan');
 
@@ -39,7 +38,6 @@ export default function ControlScreen() {
     try {
       const dashboard = await fetchDashboard();
       setManualControls(dashboard.manualControls ?? []);
-      setNutrientModeState(dashboard.nutrientMode ?? '');
       setDevicePhase(dashboard.devicePhase ?? 'Menunggu data perangkat');
       setError('');
     } catch (fetchError) {
@@ -58,6 +56,14 @@ export default function ControlScreen() {
   }, []);
 
   useEffect(() => {
+    const intervalId = setInterval(() => {
+      loadControls(true).catch(() => undefined);
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
     let cleanup = () => undefined;
 
     try {
@@ -71,13 +77,8 @@ export default function ControlScreen() {
       const unsubscribeStatus = subscribeTopic(mqttTopics.status, (message) => {
         try {
           const payload = JSON.parse(message) as {
-            nutrientMode?: string;
             controls?: ManualControl[];
           };
-
-          if (payload.nutrientMode) {
-            setNutrientModeState(payload.nutrientMode);
-          }
 
           if (Array.isArray(payload.controls)) {
             setManualControls(payload.controls);
@@ -111,6 +112,11 @@ export default function ControlScreen() {
         target: control.id,
         value: nextStatus,
       });
+      if (nextStatus) {
+        setTimeout(() => {
+          loadControls(true).catch(() => undefined);
+        }, 3500);
+      }
       setError('');
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : 'Gagal mengubah status kontrol.');
@@ -119,45 +125,12 @@ export default function ControlScreen() {
     }
   }
 
-  async function handleUpdateMode(mode: string) {
-    setSavingMode(mode);
-
-    try {
-      const nextMode = await updateNutrientMode(mode);
-      setNutrientModeState(nextMode);
-      publishTopic(mqttTopics.control, {
-        type: 'nutrient_mode',
-        value: mode,
-      });
-      setError('');
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : 'Gagal mengubah mode nutrisi.');
-    } finally {
-      setSavingMode('');
-    }
+  if (!user) {
+    return <Redirect href="/login" />;
   }
 
-  function confirmUpdateMode(mode: string) {
-    if (mode === nutrientMode || savingMode) {
-      return;
-    }
-
-    Alert.alert(
-      'Ubah mode otomatis?',
-      `Mode akan diganti ke ${mode}. Lanjutkan perubahan?`,
-      [
-        {
-          text: 'Batal',
-          style: 'cancel',
-        },
-        {
-          text: 'Ubah',
-          onPress: () => {
-            handleUpdateMode(mode).catch(() => undefined);
-          },
-        },
-      ],
-    );
+  if (user.role !== 'admin') {
+    return <Redirect href="/(tabs)" />;
   }
 
   if (loading) {
@@ -186,14 +159,11 @@ export default function ControlScreen() {
         <ThemedText type="title" style={styles.title}>
           Atur perangkat dan mode nutrisi dari aplikasi
         </ThemedText>
-        <ThemedText style={styles.subtitle}>
-          Setiap perubahan dikirim ke backend, lalu disiarkan lagi melalui MQTT agar status di seluruh sistem tetap sinkron.
-        </ThemedText>
 
         <View style={styles.modeRow}>
           <View style={styles.modeCard}>
-            <ThemedText style={styles.modeLabel}>Mode nutrisi aktif</ThemedText>
-            <ThemedText style={styles.modeValue}>{nutrientMode || '-'}</ThemedText>
+            <ThemedText style={styles.modeLabel}>Mode yang sedang dipakai</ThemedText>
+            <ThemedText style={styles.modeValue}>Otomatis</ThemedText>
           </View>
           <View style={styles.modeBadge}>
             <ThemedText style={styles.modeBadgeText}>{brokerState}</ThemedText>
@@ -283,62 +253,21 @@ export default function ControlScreen() {
             <ThemedText type="subtitle" style={styles.automaticTitle}>
               Mode otomatis
             </ThemedText>
-            <ThemedText style={styles.automaticHint}>Atur strategi nutrisi</ThemedText>
+            <ThemedText style={styles.automaticHint}>Aktif</ThemedText>
           </View>
 
           <ThemedText style={styles.automaticLead}>
-            Pilih mode otomatis sesuai fase pertumbuhan. Sistem akan memakai mode ini sebagai acuan operasi normal.
+            Sistem berjalan dalam mode otomatis tanpa label tambahan agar tampilan kontrol tetap ringkas dan bersih.
           </ThemedText>
 
-          <View style={styles.modeGrid}>
-            {nutrientModes.map((mode) => {
-              const selected = nutrientMode === mode;
-              const isSaving = savingMode === mode;
-
-              return (
-                <Pressable
-                  key={mode}
-                  style={[styles.modeOption, selected ? styles.modeOptionSelected : null]}
-                  onPress={() => confirmUpdateMode(mode)}
-                  disabled={Boolean(savingMode)}>
-                  <ThemedText style={[styles.modeOptionText, selected ? styles.modeOptionTextSelected : null]}>
-                    {isSaving ? 'Menyimpan...' : mode}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-
           <View style={styles.autoInfoCard}>
-            <ThemedText style={styles.autoInfoTitle}>Mode aktif: {nutrientMode || '-'}</ThemedText>
+            <ThemedText style={styles.autoInfoTitle}>Mode aktif: Otomatis</ThemedText>
             <ThemedText style={styles.autoInfoText}>
-              Jika backend mode nutrisi belum tersedia, pilihan ini tetap bisa dipakai sebagai acuan tampilan mobile dan sinkronisasi MQTT.
+              Pengaturan perangkat mengikuti alur otomatis sistem. Operator tidak perlu memilih mode fase lain dari aplikasi.
             </ThemedText>
           </View>
         </View>
       )}
-
-      <View style={styles.sopCard}>
-        <ThemedText type="subtitle" style={styles.sopTitle}>
-          Catatan integrasi
-        </ThemedText>
-        <View style={styles.sopRow}>
-          <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Dashboard web dan aplikasi mobile memakai backend yang sama.</ThemedText>
-        </View>
-        <View style={styles.sopRow}>
-          <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Pada perangkat Android fisik, isi `EXPO_PUBLIC_API_BASE_URL` jika host Expo tidak terdeteksi otomatis.</ThemedText>
-        </View>
-        <View style={styles.sopRow}>
-          <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Broker MQTT aktif: {getBrokerUrl() ?? 'belum diatur'}</ThemedText>
-        </View>
-        <View style={styles.sopRow}>
-          <View style={styles.sopIndex} />
-          <ThemedText style={styles.sopText}>Base URL aktif: {getApiBaseUrl() ?? 'belum diatur'}</ThemedText>
-        </View>
-      </View>
 
       {error ? (
         <View style={styles.errorCard}>
@@ -624,27 +553,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontSize: 14,
   },
-  modeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  modeOption: {
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#eef4e8',
-  },
-  modeOptionSelected: {
-    backgroundColor: '#17301a',
-  },
-  modeOptionText: {
-    color: '#17301a',
-    fontWeight: '800',
-  },
-  modeOptionTextSelected: {
-    color: '#f5fff0',
-  },
   autoInfoCard: {
     borderRadius: 18,
     padding: 14,
@@ -658,31 +566,6 @@ const styles = StyleSheet.create({
   autoInfoText: {
     color: '#546756',
     lineHeight: 20,
-  },
-  sopCard: {
-    borderRadius: 28,
-    padding: 18,
-    backgroundColor: '#ffffff',
-    gap: 14,
-  },
-  sopTitle: {
-    color: '#17301a',
-  },
-  sopRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-  sopIndex: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#8ed16d',
-    marginTop: 8,
-  },
-  sopText: {
-    flex: 1,
-    color: '#546756',
   },
   errorCard: {
     borderRadius: 18,

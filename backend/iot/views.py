@@ -1,11 +1,43 @@
 import json
+from html import escape
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .models import ControlMode, IngestTransaction, LedgerBlock, ManualControl, SensorReading
 from .services import ingest_reading, serialize_block, serialize_reading, serialize_transaction, utc_now, verify_chain
+
+
+def build_excel_table_response(filename: str, title: str, columns: list[str], rows: list[list[object]]) -> HttpResponse:
+    head_cells = "".join(f"<th>{escape(column)}</th>" for column in columns)
+    body_rows = []
+
+    for row in rows:
+        cells = "".join(f"<td>{escape('' if value is None else str(value))}</td>" for value in row)
+        body_rows.append(f"<tr>{cells}</tr>")
+
+    body = f"""<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>{escape(title)}</title>
+  </head>
+  <body>
+    <table border="1">
+      <thead>
+        <tr>{head_cells}</tr>
+      </thead>
+      <tbody>
+        {''.join(body_rows)}
+      </tbody>
+    </table>
+  </body>
+</html>
+"""
+    response = HttpResponse(body, content_type="application/vnd.ms-excel; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def ensure_manual_controls():
@@ -61,6 +93,11 @@ def sync_control_state_from_device(body: dict):
     if normalized_mode is not None and control_mode.mode != normalized_mode:
         control_mode.mode = normalized_mode
         control_mode.save(update_fields=["mode", "updated_at"])
+
+    # In manual mode, the dashboard/manual control endpoint is the source of truth.
+    # Device ingest should not flip the toggle back off while it is only reporting state.
+    if control_mode.mode == "manual":
+        return
 
     if "manualPumpCommand" in body or "pump" in body or "pompa" in body or "pump_status" in body or "pompaStatus" in body:
         raw_status = body.get("manualPumpCommand", body.get("pump", body.get("pompa", body.get("pump_status", body.get("pompaStatus")))))
@@ -180,6 +217,70 @@ def readings_view(request):
         "total": total,
         "total_pages": (total + limit - 1) // limit,
     })
+
+
+@require_GET
+def readings_export_excel_view(request):
+    queryset = SensorReading.objects.select_related("block").all()
+    columns = [
+        "reading_id",
+        "transaction_id",
+        "device_id",
+        "lettuce_bed_id",
+        "air_temperature_c",
+        "temperature_c",
+        "humidity_pct",
+        "ph",
+        "tds_ppm",
+        "water_distance_cm",
+        "water_level_pct",
+        "light_lux",
+        "pump_prediction",
+        "pump_status",
+        "device_phase",
+        "recorded_at",
+        "received_at",
+        "signature",
+        "block_index",
+        "block_hash",
+        "previous_hash",
+        "payload_hash",
+    ]
+    rows = []
+
+    for item in queryset:
+        block = getattr(item, "block", None)
+        rows.append([
+            item.id,
+            item.transaction_id,
+            item.device_id,
+            item.lettuce_bed_id,
+            item.air_temperature_c,
+            item.temperature_c,
+            item.humidity_pct,
+            item.ph,
+            item.tds_ppm,
+            item.water_distance_cm,
+            item.water_level_pct,
+            item.light_lux,
+            item.pump_prediction,
+            item.pump_status,
+            item.device_phase,
+            item.recorded_at.isoformat(),
+            item.received_at.isoformat(),
+            item.signature,
+            block.block_index if block else "",
+            block.block_hash if block else "",
+            block.previous_hash if block else "",
+            block.payload_hash if block else "",
+        ])
+
+    return build_excel_table_response(
+        filename="hydrigo-dataset.xls",
+        title="Hydrigo Dataset",
+        columns=columns,
+        rows=rows,
+    )
 
 
 @require_GET

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { fetchDashboard, getApiBaseUrl, type DashboardData } from '@/lib/api';
+import { fetchDashboard, getApiBaseUrl, type DashboardBlockTarget, type DashboardData } from '@/lib/api';
 import { attachBrokerListeners, mqttTopics, subscribeTopic } from '@/lib/mqttClient';
 
 const emptySnapshot = {
@@ -13,6 +14,12 @@ const emptySnapshot = {
 };
 
 export default function DashboardScreen() {
+  const scrollRef = useRef<ScrollView | null>(null);
+  const sectionOffsets = useRef({
+    sensor: 0,
+    beds: 0,
+    schedule: 0,
+  });
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,6 +125,64 @@ export default function DashboardScreen() {
     { value: brokerState, label: 'status broker mqtt' },
   ];
 
+  function openBlockDetail(block: DashboardBlockTarget) {
+    router.push({
+      pathname: '/block-detail',
+      params: {
+        blockIndex: String(block.blockIndex),
+        readingId: String(block.readingId),
+        transactionId: block.transactionId,
+        deviceId: block.deviceId,
+        lettuceBedId: block.lettuceBedId,
+        payloadHash: block.payloadHash,
+        previousHash: block.previousHash,
+        blockHash: block.blockHash,
+        createdAt: block.createdAt,
+        ph: String(block.ph),
+        tdsPpm: String(block.tdsPpm),
+        waterTemp: String(block.waterTemp),
+        airTemp: block.airTemp != null ? String(block.airTemp) : '',
+        humidity: String(block.humidity),
+        waterLevel: String(block.waterLevel),
+        chainStatus: 'Tercatat di blockchain',
+        chainNote: 'Detail ini dibuka dari reading dashboard yang sudah memiliki referensi block ledger.',
+      },
+    });
+  }
+
+  function getActivityTarget(title: string, detail: string): 'sensor' | 'beds' | 'schedule' {
+    const text = `${title} ${detail}`.toLowerCase();
+
+    if (
+      text.includes('nutrisi') ||
+      text.includes('ec') ||
+      text.includes('ph') ||
+      text.includes('suhu') ||
+      text.includes('air') ||
+      text.includes('humidity')
+    ) {
+      return 'sensor';
+    }
+
+    if (
+      text.includes('selada') ||
+      text.includes('daun') ||
+      text.includes('rak') ||
+      text.includes('bed')
+    ) {
+      return 'beds';
+    }
+
+    return 'schedule';
+  }
+
+  function scrollToSection(target: 'sensor' | 'beds' | 'schedule') {
+    scrollRef.current?.scrollTo({
+      y: Math.max(sectionOffsets.current[target] - 16, 0),
+      animated: true,
+    });
+  }
+
   if (loading) {
     return (
       <View style={styles.stateScreen}>
@@ -150,6 +215,7 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -185,7 +251,11 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      <View style={styles.snapshotCard}>
+      <View
+        style={styles.snapshotCard}
+        onLayout={(event) => {
+          sectionOffsets.current.sensor = event.nativeEvent.layout.y;
+        }}>
         <View style={styles.sectionHeader}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
             Ringkasan sensor
@@ -215,15 +285,28 @@ export default function DashboardScreen() {
 
       <View style={styles.summaryGrid}>
         {dashboard.summaryCards.map((card, index) => (
-          <View key={`${card.label}-${index}`} style={styles.summaryCard}>
+          <Pressable
+            key={`${card.label}-${index}`}
+            disabled={!card.block}
+            onPress={() => {
+              if (card.block) {
+                openBlockDetail(card.block);
+              }
+            }}
+            style={({ pressed }) => [styles.summaryCard, card.block && pressed ? styles.pressableCardPressed : null]}>
             <ThemedText style={styles.summaryLabel}>{card.label}</ThemedText>
             <ThemedText style={styles.summaryValue}>{card.value}</ThemedText>
             <ThemedText style={styles.summaryNote}>{card.note}</ThemedText>
-          </View>
+            {card.block ? <ThemedText style={styles.linkHint}>Lihat data blockchain</ThemedText> : null}
+          </Pressable>
         ))}
       </View>
 
-      <View style={styles.panel}>
+      <View
+        style={styles.panel}
+        onLayout={(event) => {
+          sectionOffsets.current.beds = event.nativeEvent.layout.y;
+        }}>
         <View style={styles.sectionHeader}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
             Rak selada
@@ -272,7 +355,11 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.dualPanel}>
-        <View style={[styles.panel, styles.flexPanel]}>
+        <View
+          style={[styles.panel, styles.flexPanel]}
+          onLayout={(event) => {
+            sectionOffsets.current.schedule = event.nativeEvent.layout.y;
+          }}>
           <View style={styles.sectionHeader}>
             <ThemedText type="subtitle" style={styles.sectionTitle}>
               Agenda hari ini
@@ -298,13 +385,24 @@ export default function DashboardScreen() {
             <ThemedText style={styles.sectionCaption}>Kegiatan sistem dan operator</ThemedText>
           </View>
           {dashboard.activities.map((item) => (
-            <View key={`${item.time}-${item.title}`} style={styles.activityRow}>
+            <Pressable
+              key={`${item.time}-${item.title}`}
+              onPress={() => {
+                if (item.block) {
+                  openBlockDetail(item.block);
+                  return;
+                }
+
+                scrollToSection(getActivityTarget(item.title, item.detail));
+              }}
+              style={({ pressed }) => [styles.activityRow, pressed ? styles.activityRowPressed : null]}>
               <ThemedText style={styles.activityTime}>{item.time}</ThemedText>
               <View style={styles.activityCopy}>
                 <ThemedText style={styles.listTitle}>{item.title}</ThemedText>
                 <ThemedText style={styles.listMeta}>{item.detail}</ThemedText>
+                {item.block ? <ThemedText style={styles.activityLinkHint}>Buka block blockchain</ThemedText> : null}
               </View>
-            </View>
+            </Pressable>
           ))}
         </View>
       </View>
@@ -512,6 +610,9 @@ const styles = StyleSheet.create({
     padding: 18,
     backgroundColor: '#ffffff',
   },
+  pressableCardPressed: {
+    opacity: 0.85,
+  },
   summaryLabel: {
     color: '#617161',
     fontSize: 12,
@@ -528,6 +629,12 @@ const styles = StyleSheet.create({
   summaryNote: {
     color: '#5a685a',
     marginTop: 8,
+  },
+  linkHint: {
+    color: '#2f6fed',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 10,
   },
   panel: {
     borderRadius: 28,
@@ -662,6 +769,10 @@ const styles = StyleSheet.create({
     padding: 14,
     backgroundColor: '#f6faf3',
   },
+  activityRowPressed: {
+    backgroundColor: '#edf7e7',
+    transform: [{ scale: 0.99 }],
+  },
   activityTime: {
     width: 48,
     color: '#2f7d32',
@@ -669,6 +780,12 @@ const styles = StyleSheet.create({
   },
   activityCopy: {
     flex: 1,
+  },
+  activityLinkHint: {
+    color: '#2f6fed',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 6,
   },
   inlineError: {
     borderRadius: 18,

@@ -165,3 +165,32 @@ class IoTIngestTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ControlMode.objects.first().mode, "automatic")
         self.assertEqual(ManualControl.objects.get(control_id="water-pump").status, False)
+
+    def test_ingest_does_not_turn_off_manual_toggle_while_mode_is_manual(self):
+        self.client.post(
+            "/api/v1/controls/manual",
+            data=json.dumps({"controlId": "water-pump", "status": True}),
+            content_type="application/json",
+        )
+        self.client.post(
+            "/api/v1/controls/mode",
+            data=json.dumps({"mode": "manual"}),
+            content_type="application/json",
+        )
+
+        payload = {
+            **self.payload,
+            "controlMode": 1,
+            "mode": "manual",
+            "manualPumpCommand": False,
+            "pump_status": False,
+        }
+        response = self.client.post(
+            "/api/v1/iot/readings",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(ControlMode.objects.first().mode, "manual")
+        self.assertEqual(ManualControl.objects.get(control_id="water-pump").status, True)
