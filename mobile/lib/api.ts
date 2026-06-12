@@ -77,6 +77,11 @@ export type ManualControl = {
   updatedAt?: string;
 };
 
+export type ManualControlState = {
+  pompaNutrisi: boolean;
+  pompaAir: boolean;
+};
+
 export type DashboardData = {
   summaryCards: SummaryCard[];
   heroStats: HeroStat[];
@@ -86,6 +91,7 @@ export type DashboardData = {
   schedule: ScheduleItem[];
   chartBars: ChartBar[];
   manualControls: ManualControl[];
+  manualControlState: ManualControlState;
   nutrientMode: string;
   devicePhase: string;
 };
@@ -147,8 +153,9 @@ type ReadingListResponse = {
   error?: string;
 };
 
-type ManualControlListResponse = {
-  data?: ManualControl[];
+type ManualControlResponse = {
+  pompaNutrisi?: boolean;
+  pompaAir?: boolean;
   error?: string;
 };
 
@@ -163,6 +170,18 @@ type ControlModeResponse = {
   controlMode?: number;
   error?: string;
 };
+
+function mapControlModeToLabel(mode: string | undefined, fallbackLabel: string) {
+  if (mode === 'manual') {
+    return 'Manual';
+  }
+
+  if (mode === 'automatic') {
+    return 'Otomatis';
+  }
+
+  return fallbackLabel;
+}
 
 type ChainResponse = {
   data?: LedgerBlock[];
@@ -186,12 +205,42 @@ export type PaginatedLedgerResult = {
 function getDefaultManualControls(status = false): ManualControl[] {
   return [
     {
+      id: 'nutrient-pump',
+      name: 'Pompa Nutrisi',
+      description: 'Kontrol manual pompa nutrisi tanpa inferensi model.',
+      status,
+    },
+    {
       id: 'water-pump',
       name: 'Pompa Air',
       description: 'Kontrol manual pompa air utama untuk sirkulasi nutrisi.',
       status,
     },
   ];
+}
+
+function buildManualControlsFromState(state: ManualControlState): ManualControl[] {
+  return [
+    {
+      id: 'nutrient-pump',
+      name: 'Pompa Nutrisi',
+      description: 'Kontrol manual pompa nutrisi tanpa inferensi model.',
+      status: state.pompaNutrisi,
+    },
+    {
+      id: 'water-pump',
+      name: 'Pompa Air',
+      description: 'Kontrol manual pompa air utama untuk sirkulasi nutrisi.',
+      status: state.pompaAir,
+    },
+  ];
+}
+
+function normalizeManualControlState(payload?: ManualControlResponse): ManualControlState {
+  return {
+    pompaNutrisi: Boolean(payload?.pompaNutrisi),
+    pompaAir: Boolean(payload?.pompaAir),
+  };
 }
 
 function trimTrailingSlash(value: string) {
@@ -363,6 +412,10 @@ function buildDashboardData(readings: Reading[]): DashboardData {
       schedule: [],
       chartBars: [],
       manualControls: [],
+      manualControlState: {
+        pompaNutrisi: false,
+        pompaAir: false,
+      },
       nutrientMode: 'Belum tersedia',
       devicePhase: 'Menunggu data perangkat',
     };
@@ -471,15 +524,20 @@ function buildDashboardData(readings: Reading[]): DashboardData {
     schedule,
     chartBars,
     manualControls: [],
+    manualControlState: {
+      pompaNutrisi: false,
+      pompaAir: false,
+    },
     nutrientMode,
     devicePhase: latest.device_phase || (latest.pump_status ? 'Pompa aktif' : 'Siaga'),
   };
 }
 
 export async function fetchDashboard() {
-  const [response, controlsResponse] = await Promise.all([
+  const [response, controlsResponse, modeResponse] = await Promise.all([
     fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/readings?limit=20`)),
     fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/controls/manual`)),
+    fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/controls/mode`)),
   ]);
   const result = await parseJson<ReadingListResponse>(response);
 
@@ -487,49 +545,68 @@ export async function fetchDashboard() {
     throw new Error(result.error || 'Gagal memuat data hydroponics.');
   }
 
-  let manualControls: ManualControl[] = getDefaultManualControls();
+  let manualControlState: ManualControlState = {
+    pompaNutrisi: false,
+    pompaAir: false,
+  };
 
   if (controlsResponse.ok) {
     try {
-      const controlsResult = await parseJson<ManualControlListResponse>(controlsResponse);
-      manualControls = controlsResult.data?.length ? controlsResult.data : getDefaultManualControls();
+      const controlsResult = await parseJson<ManualControlResponse>(controlsResponse);
+      manualControlState = normalizeManualControlState(controlsResult);
     } catch {
-      manualControls = getDefaultManualControls();
+      manualControlState = {
+        pompaNutrisi: false,
+        pompaAir: false,
+      };
     }
   }
 
+  let nutrientMode = buildDashboardData(result.data ?? []).nutrientMode;
+
+  if (modeResponse.ok) {
+    try {
+      const controlModeResult = await parseJson<ControlModeResponse>(modeResponse);
+      const normalizedMode = controlModeResult.data?.mode ?? controlModeResult.mode;
+      nutrientMode = mapControlModeToLabel(normalizedMode, nutrientMode);
+    } catch {
+      // Fall back to the inferred label from the latest reading.
+    }
+  }
+
+  const dashboardData = buildDashboardData(result.data ?? []);
+
   return {
-    ...buildDashboardData(result.data ?? []),
-    manualControls,
+    ...dashboardData,
+    manualControls: buildManualControlsFromState(manualControlState),
+    manualControlState,
+    nutrientMode,
   };
 }
 
 export async function updateManualControl(controlId: string, status: boolean) {
   try {
+    const payload =
+      controlId === 'nutrient-pump'
+        ? { pompaNutrisi: status }
+        : { pompaAir: status };
+
     const response = await fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/controls/manual`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        controlId,
-        status,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
       return getDefaultManualControls(status);
     }
 
-    const result = await parseJson<ManualControlListResponse>(response);
-
-    if (!result.data?.length) {
-      return getDefaultManualControls(status);
-    }
-
-    return result.data;
+    const result = await parseJson<ManualControlResponse>(response);
+    return buildManualControlsFromState(normalizeManualControlState(result));
   } catch {
-    if (controlId === 'water-pump') {
+    if (controlId === 'water-pump' || controlId === 'nutrient-pump') {
       return getDefaultManualControls(status);
     }
 
@@ -538,7 +615,7 @@ export async function updateManualControl(controlId: string, status: boolean) {
 }
 
 export async function updateNutrientMode(mode: string) {
-  const requestedMode = mode.toLowerCase() === 'semai' ? 'manual' : 'automatic';
+  const requestedMode = mode.toLowerCase() === 'manual' ? 'manual' : 'automatic';
   const response = await fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/controls/mode`), {
     method: 'POST',
     headers: {
@@ -560,7 +637,7 @@ export async function updateNutrientMode(mode: string) {
     throw new Error('Respons mode kontrol tidak valid.');
   }
 
-  return requestedMode === 'manual' ? 'Semai' : mode;
+  return mapControlModeToLabel(normalizedMode, requestedMode);
 }
 
 export async function fetchLedgerChain(page = 1, limit = 10): Promise<PaginatedLedgerResult> {

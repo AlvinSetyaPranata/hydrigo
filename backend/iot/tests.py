@@ -95,24 +95,51 @@ class IoTIngestTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(len(body["data"]), 1)
-        self.assertEqual(body["data"][0]["id"], "water-pump")
-        self.assertEqual(body["data"][0]["name"], "Pompa Air")
-        self.assertEqual(ManualControl.objects.count(), 1)
+        self.assertEqual(body["pompaNutrisi"], False)
+        self.assertEqual(body["pompaAir"], False)
+        self.assertEqual(ManualControl.objects.count(), 2)
 
     def test_manual_controls_endpoint_updates_pump_status(self):
         self.client.get("/api/v1/controls/manual")
 
         response = self.client.post(
             "/api/v1/controls/manual",
-            data=json.dumps({"controlId": "water-pump", "status": True}),
+            data=json.dumps({"pompaAir": True}),
             content_type="application/json",
         )
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["data"][0]["status"], True)
+        self.assertEqual(body["pompaAir"], True)
+        self.assertEqual(body["pompaNutrisi"], False)
         self.assertEqual(ManualControl.objects.get(control_id="water-pump").status, True)
+
+    def test_manual_controls_endpoint_updates_nutrient_pump_status(self):
+        self.client.get("/api/v1/controls/manual")
+
+        response = self.client.post(
+            "/api/v1/controls/manual",
+            data=json.dumps({"pompaNutrisi": True}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["pompaNutrisi"], True)
+        self.assertEqual(ManualControl.objects.get(control_id="nutrient-pump").status, True)
+
+    def test_manual_controls_endpoint_updates_both_pumps_status(self):
+        self.client.get("/api/v1/controls/manual")
+
+        response = self.client.post(
+            "/api/v1/controls/manual",
+            data=json.dumps({"pompaNutrisi": True, "pompaAir": False}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["pompaNutrisi"], True)
+        self.assertEqual(body["pompaAir"], False)
 
     def test_control_mode_endpoint_returns_default_mode(self):
         response = self.client.get("/api/v1/controls/mode")

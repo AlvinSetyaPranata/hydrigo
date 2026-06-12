@@ -6,6 +6,184 @@ import { getMqttClient, publishTopic, subscribeTopic } from './lib/mqttClient'
 const CONTROL_TOPIC = 'hydrigo/lettuce/control'
 const SENSOR_TOPIC = 'hydrigo/lettuce/sensor'
 const STATUS_TOPIC = 'hydrigo/lettuce/status'
+const MODE_LABELS = {
+  manual: 'Manual',
+  automatic: 'Otomatis',
+}
+const MANUAL_CONTROL_META = {
+  'nutrient-pump': {
+    name: 'Pompa Nutrisi',
+    description: 'Kontrol manual pompa nutrisi tanpa inferensi model.',
+  },
+  'water-pump': {
+    name: 'Pompa Air',
+    description: 'Kontrol manual pompa air / penambah air.',
+  },
+}
+
+function mapControlModeToLabel(mode, fallbackLabel = '') {
+  return MODE_LABELS[mode] ?? fallbackLabel
+}
+
+function buildManualControlsFromState(state = {}) {
+  return [
+    {
+      id: 'nutrient-pump',
+      ...MANUAL_CONTROL_META['nutrient-pump'],
+      status: Boolean(state.pompaNutrisi),
+    },
+    {
+      id: 'water-pump',
+      ...MANUAL_CONTROL_META['water-pump'],
+      status: Boolean(state.pompaAir),
+    },
+  ]
+}
+
+function inferManualControlState(controls = []) {
+  return {
+    pompaNutrisi: Boolean(
+      controls.find((item) => item.id === 'nutrient-pump')?.status,
+    ),
+    pompaAir: Boolean(
+      controls.find((item) => item.id === 'water-pump')?.status,
+    ),
+  }
+}
+
+function inferDashboardData(readings) {
+  const latest = readings[0]
+
+  if (!latest) {
+    return {
+      summaryCards: [],
+      heroStats: [
+        { value: '0', label: 'reading tersimpan' },
+        { value: '0', label: 'bed terpantau' },
+        { value: '-', label: 'mode kontrol' },
+      ],
+      sensorSnapshot: {
+        ph: '--',
+        waterTemp: '--',
+        humidity: '--',
+      },
+      lettuceBeds: [],
+      activities: [],
+      schedule: [],
+      chartBars: [],
+      nutrientMode: 'Belum tersedia',
+    }
+  }
+
+  const latestByBed = new Map()
+  for (const reading of readings) {
+    if (!latestByBed.has(reading.lettuce_bed_id)) {
+      latestByBed.set(reading.lettuce_bed_id, reading)
+    }
+  }
+
+  const bedReadings = [...latestByBed.values()]
+  const avgPh =
+    bedReadings.reduce((sum, item) => sum + item.ph, 0) / bedReadings.length
+  const avgWater =
+    bedReadings.reduce((sum, item) => sum + item.water_level_pct, 0) /
+    bedReadings.length
+  const pumpOnCount = bedReadings.filter((item) => item.pump_status === true).length
+
+  const inferredMode =
+    latest.tds_ppm < 600 ? 'Semai' : latest.tds_ppm < 900 ? 'Vegetatif' : 'Finishing'
+
+  return {
+    summaryCards: [
+      {
+        label: 'Reading terakhir',
+        value: new Date(latest.recorded_at).toLocaleString('id-ID', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        note: `Device ${latest.device_id} • transaksi ${latest.transaction_id}`,
+      },
+      {
+        label: 'Rata-rata pH',
+        value: new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(avgPh),
+        note: 'Dihitung dari reading terbaru tiap bed.',
+      },
+      {
+        label: 'Level air rata-rata',
+        value: `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(avgWater)}%`,
+        note: `${pumpOnCount} pompa aktif dari ${bedReadings.length} bed terpantau.`,
+      },
+    ],
+    heroStats: [
+      { value: String(readings.length), label: 'reading tersimpan' },
+      { value: String(bedReadings.length), label: 'bed terpantau' },
+      { value: inferredMode, label: 'mode data' },
+    ],
+    sensorSnapshot: {
+      ph: new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(latest.ph),
+      waterTemp: `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(latest.temperature_c)}°C`,
+      humidity: `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(latest.humidity_pct)}%`,
+    },
+    lettuceBeds: bedReadings.map((reading) => ({
+      name: reading.device_id,
+      zone: reading.lettuce_bed_id,
+      phase: reading.device_phase || 'Monitoring aktif',
+      humidity: `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(reading.humidity_pct)}%`,
+      temp: `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(reading.temperature_c)}°C`,
+      ec: `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(reading.tds_ppm)} ppm`,
+      status:
+        reading.humidity_pct < 45 ||
+        reading.humidity_pct > 85 ||
+        reading.ph < 5.5 ||
+        reading.ph > 7 ||
+        reading.temperature_c < 18 ||
+        reading.temperature_c > 30 ||
+        reading.water_level_pct < 30
+          ? 'Perlu cek'
+          : 'Stabil',
+      health: Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            100 -
+              Math.abs(reading.ph - 6.2) * 12 -
+              Math.max(0, Math.abs(reading.temperature_c - 24) - 2) * 4 -
+              Math.max(0, Math.abs(reading.humidity_pct - 70) - 10) * 0.8 -
+              Math.max(0, 40 - reading.water_level_pct) * 0.7,
+          ),
+        ),
+      ),
+    })),
+    activities: readings.slice(0, 5).map((reading) => ({
+      time: new Date(reading.recorded_at).toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      title: `Reading ${reading.device_id}`,
+      detail: `pH ${reading.ph} • air ${reading.temperature_c}°C • hash #${reading.block_index}`,
+    })),
+    schedule: bedReadings.slice(0, 3).map((reading, index) => ({
+      task: `Cek bed ${reading.lettuce_bed_id}`,
+      due: new Date(reading.recorded_at).toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      owner: index === 0 ? 'Data terbaru' : 'Hydrigo backend',
+    })),
+    chartBars: bedReadings.slice(0, 6).map((reading) => ({
+      label: reading.lettuce_bed_id,
+      value: Math.round(reading.water_level_pct),
+    })),
+    nutrientMode: inferredMode,
+  }
+}
 
 function getActivityHref(item) {
   const text = `${item.title} ${item.detail}`.toLowerCase()
@@ -51,23 +229,41 @@ function App() {
 
     async function loadDashboard() {
       try {
-        const response = await fetch(buildApiUrl('/dashboard'))
-        const result = await response.json()
+        const [readingsResponse, controlsResponse, modeResponse] = await Promise.all([
+          fetch(buildApiUrl('/api/v1/readings?limit=20')),
+          fetch(buildApiUrl('/api/v1/controls/manual')),
+          fetch(buildApiUrl('/api/v1/controls/mode')),
+        ])
+        const readingsResult = await readingsResponse.json()
 
-        if (!response.ok || !result?.data || ignore) {
-          throw new Error(result?.error || 'Invalid dashboard response')
+        if (!readingsResponse.ok || ignore) {
+          throw new Error(readingsResult?.error || 'Invalid dashboard response')
         }
 
-        setDashboardData(result.data)
-        setManualControls(result.data.manualControls ?? [])
-        setNutrientMode(result.data.nutrientMode ?? '')
+        const nextDashboardData = inferDashboardData(readingsResult.data ?? [])
+        setDashboardData(nextDashboardData)
         setSensorSnapshot(
-          result.data.sensorSnapshot ?? {
+          nextDashboardData.sensorSnapshot ?? {
             ph: '--',
             waterTemp: '--',
             humidity: '--',
           },
         )
+
+        if (controlsResponse.ok) {
+          const controlsResult = await controlsResponse.json()
+          setManualControls(buildManualControlsFromState(controlsResult))
+        } else {
+          setManualControls(buildManualControlsFromState())
+        }
+
+        if (modeResponse.ok) {
+          const modeResult = await modeResponse.json()
+          const mode = modeResult?.data?.mode ?? modeResult?.mode
+          setNutrientMode(mapControlModeToLabel(mode, nextDashboardData.nutrientMode))
+        } else {
+          setNutrientMode(nextDashboardData.nutrientMode ?? '')
+        }
         setApiState('Connected')
         setApiError('')
       } catch (error) {
@@ -115,20 +311,24 @@ function App() {
       try {
         const payload = JSON.parse(message)
 
-        if (Array.isArray(payload.controls)) {
-          setManualControls((current) =>
-            current.map((item) => {
-              const incoming = payload.controls.find(
-                (control) => control.id === item.id,
-              )
-
-              return incoming ? { ...item, status: incoming.status } : item
-            }),
-          )
+        if (payload.controls) {
+          setManualControls(buildManualControlsFromState(payload.controls))
+        } else if (Array.isArray(payload.controls)) {
+          setManualControls(buildManualControlsFromState(inferManualControlState(payload.controls)))
         }
 
         if (payload.nutrientMode) {
           setNutrientMode(payload.nutrientMode)
+        }
+
+        if (payload.mode) {
+          setNutrientMode(mapControlModeToLabel(payload.mode, payload.nutrientMode))
+        }
+
+        if (payload.controlMode === 1) {
+          setNutrientMode('Manual')
+        } else if (payload.controlMode === 0) {
+          setNutrientMode('Otomatis')
         }
       } catch {
         setBrokerState('Payload Error')
@@ -151,23 +351,25 @@ function App() {
     const nextStatus = !(currentControl?.status ?? false)
 
     try {
-      const response = await fetch(buildApiUrl('/controls/manual'), {
+      const payload =
+        id === 'nutrient-pump'
+          ? { pompaNutrisi: nextStatus }
+          : { pompaAir: nextStatus }
+
+      const response = await fetch(buildApiUrl('/api/v1/controls/manual'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          controlId: id,
-          status: nextStatus,
-        }),
+        body: JSON.stringify(payload),
       })
       const result = await response.json()
 
-      if (!response.ok || !result?.data) {
+      if (!response.ok) {
         throw new Error(result?.error || 'Failed to update control')
       }
 
-      setManualControls(result.data)
+      setManualControls(buildManualControlsFromState(result))
       publishTopic(CONTROL_TOPIC, {
         type: 'manual_control',
         target: id,
@@ -181,7 +383,7 @@ function App() {
 
   const updateNutrientMode = async (mode) => {
     try {
-      const response = await fetch(buildApiUrl('/controls/nutrient-mode'), {
+      const response = await fetch(buildApiUrl('/api/v1/controls/mode'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -190,14 +392,15 @@ function App() {
       })
       const result = await response.json()
 
-      if (!response.ok || !result?.data?.nutrientMode) {
+      if (!response.ok) {
         throw new Error(result?.error || 'Failed to update nutrient mode')
       }
 
-      setNutrientMode(result.data.nutrientMode)
+      const nextMode = result?.data?.mode ?? result?.mode ?? mode
+      setNutrientMode(mapControlModeToLabel(nextMode, mode))
       publishTopic(CONTROL_TOPIC, {
         type: 'nutrient_mode',
-        value: mode,
+        value: nextMode,
       })
     } catch (error) {
       setApiError(error.message || 'Failed to update nutrient mode')
@@ -335,52 +538,68 @@ function App() {
           </div>
 
           <div className="mqtt-note">
-            API data dari <code>{buildApiUrl('/dashboard')}</code>. Update kontrol
-            ke <code>{buildApiUrl('/controls/manual')}</code> dan <code>{buildApiUrl('/controls/nutrient-mode')}</code>.
+            API data dari <code>{buildApiUrl('/api/v1/readings?limit=20')}</code>. Update kontrol
+            ke <code>{buildApiUrl('/api/v1/controls/manual')}</code> dan <code>{buildApiUrl('/api/v1/controls/mode')}</code>.
           </div>
 
-          <div className="manual-control-list">
-            {manualControls.map((control) => (
-              <div key={control.id} className="manual-control-card">
-                <div className="manual-control-top">
-                  <div>
-                    <strong>{control.name}</strong>
-                    <p>{control.description}</p>
+          {nutrientMode === 'Manual' ? (
+            <div className="manual-control-list">
+              {manualControls.map((control) => (
+                <div key={control.id} className="manual-control-card">
+                  <div className="manual-control-top">
+                    <div>
+                      <strong>{control.name}</strong>
+                      <p>{control.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className={`toggle-switch ${control.status ? 'active' : ''}`}
+                      onClick={() => toggleControl(control.id)}
+                      aria-pressed={control.status}
+                      aria-label={`${control.name} ${control.status ? 'aktif' : 'nonaktif'}`}
+                    >
+                      <span />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className={`toggle-switch ${control.status ? 'active' : ''}`}
-                    onClick={() => toggleControl(control.id)}
-                    aria-pressed={control.status}
-                    aria-label={`${control.name} ${control.status ? 'aktif' : 'nonaktif'}`}
-                  >
-                    <span />
-                  </button>
+                  <span className={`manual-badge ${control.status ? 'on' : 'off'}`}>
+                    {control.status ? 'Aktif' : 'Nonaktif'}
+                  </span>
                 </div>
-                <span className={`manual-badge ${control.status ? 'on' : 'off'}`}>
-                  {control.status ? 'Aktif' : 'Nonaktif'}
-                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="manual-mode-card">
+              <div className="manual-mode-head">
+                <div>
+                  <strong>Mode Otomatis Aktif</strong>
+                  <p>Sistem dikontrol otomatis oleh KNN.</p>
+                </div>
+                <span className="manual-badge off">Manual Dinonaktifkan</span>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
 
           <div className="manual-mode-card">
             <div className="manual-mode-head">
               <div>
-                <strong>Mode Nutrisi</strong>
-                <p>Pilih formula sesuai fase pertumbuhan selada.</p>
+                <strong>Mode Kontrol</strong>
+                <p>
+                  {nutrientMode === 'Manual'
+                    ? 'KNN nonaktif, pompa dikontrol manual dari aplikasi.'
+                    : 'Sistem dikontrol otomatis oleh KNN.'}
+                </p>
               </div>
               <span className="manual-badge on">{nutrientMode}</span>
             </div>
             <div className="mode-options">
-              {['Semai', 'Vegetatif', 'Finishing'].map((mode) => (
+              {['manual', 'automatic'].map((mode) => (
                 <button
                   key={mode}
                   type="button"
-                  className={`mode-chip ${nutrientMode === mode ? 'selected' : ''}`}
+                  className={`mode-chip ${nutrientMode === mapControlModeToLabel(mode, mode) ? 'selected' : ''}`}
                   onClick={() => updateNutrientMode(mode)}
                 >
-                  {mode}
+                  {mapControlModeToLabel(mode, mode)}
                 </button>
               ))}
             </div>

@@ -41,14 +41,24 @@ def build_excel_table_response(filename: str, title: str, columns: list[str], ro
 
 
 def ensure_manual_controls():
-    ManualControl.objects.get_or_create(
-        control_id="water-pump",
-        defaults={
+    defaults_by_control = {
+        "water-pump": {
             "name": "Pompa Air",
             "description": "Kontrol manual pompa air utama untuk sirkulasi nutrisi.",
             "status": False,
         },
-    )
+        "nutrient-pump": {
+            "name": "Pompa Nutrisi",
+            "description": "Kontrol manual pompa nutrisi tanpa inferensi model.",
+            "status": False,
+        },
+    }
+
+    for control_id, defaults in defaults_by_control.items():
+        ManualControl.objects.get_or_create(
+            control_id=control_id,
+            defaults=defaults,
+        )
 
 
 def ensure_control_mode():
@@ -62,6 +72,17 @@ def serialize_manual_control(item: ManualControl):
         "description": item.description,
         "status": item.status,
         "updatedAt": item.updated_at.isoformat(),
+    }
+
+
+def serialize_manual_control_state() -> dict[str, bool]:
+    controls = {
+        item.control_id: item.status
+        for item in ManualControl.objects.all()
+    }
+    return {
+        "pompaNutrisi": bool(controls.get("nutrient-pump", False)),
+        "pompaAir": bool(controls.get("water-pump", False)),
     }
 
 
@@ -119,19 +140,41 @@ def manual_controls_view(request):
     ensure_manual_controls()
 
     if request.method == "GET":
-        controls = [serialize_manual_control(item) for item in ManualControl.objects.all()]
-        return JsonResponse({"data": controls})
+        return JsonResponse(serialize_manual_control_state())
 
     try:
         body = json.loads(request.body.decode("utf-8"))
     except json.JSONDecodeError:
         return JsonResponse({"error": "body harus JSON valid"}, status=400)
 
+    if "pompaNutrisi" in body or "pompaAir" in body:
+        pompa_nutrisi = body.get("pompaNutrisi")
+        pompa_air = body.get("pompaAir")
+
+        if pompa_nutrisi is not None and not isinstance(pompa_nutrisi, bool):
+            return JsonResponse({"error": "pompaNutrisi harus boolean"}, status=400)
+        if pompa_air is not None and not isinstance(pompa_air, bool):
+            return JsonResponse({"error": "pompaAir harus boolean"}, status=400)
+
+        if pompa_nutrisi is not None:
+            control = ManualControl.objects.filter(control_id="nutrient-pump").first()
+            if control is not None and control.status != pompa_nutrisi:
+                control.status = pompa_nutrisi
+                control.save(update_fields=["status", "updated_at"])
+
+        if pompa_air is not None:
+            control = ManualControl.objects.filter(control_id="water-pump").first()
+            if control is not None and control.status != pompa_air:
+                control.status = pompa_air
+                control.save(update_fields=["status", "updated_at"])
+
+        return JsonResponse(serialize_manual_control_state())
+
     control_id = str(body.get("controlId", "")).strip()
     status = body.get("status")
 
     if not control_id:
-        return JsonResponse({"error": "controlId wajib diisi"}, status=400)
+        return JsonResponse({"error": "body harus berisi pompaNutrisi/pompaAir atau controlId"}, status=400)
     if not isinstance(status, bool):
         return JsonResponse({"error": "status harus boolean"}, status=400)
 
@@ -141,8 +184,7 @@ def manual_controls_view(request):
 
     control.status = status
     control.save(update_fields=["status", "updated_at"])
-    controls = [serialize_manual_control(item) for item in ManualControl.objects.all()]
-    return JsonResponse({"data": controls})
+    return JsonResponse(serialize_manual_control_state())
 
 
 @csrf_exempt

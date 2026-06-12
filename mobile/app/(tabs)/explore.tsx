@@ -8,6 +8,7 @@ import {
   fetchDashboard,
   getApiBaseUrl,
   updateManualControl,
+  updateNutrientMode,
   type ManualControl,
 } from '@/lib/api';
 import { attachBrokerListeners, mqttTopics, publishTopic, subscribeTopic } from '@/lib/mqttClient';
@@ -21,10 +22,11 @@ export default function ControlScreen() {
   const { user } = useAuth();
   const [manualControls, setManualControls] = useState<ManualControl[]>([]);
   const [devicePhase, setDevicePhase] = useState('Menunggu data perangkat');
-  const [activeView, setActiveView] = useState<(typeof controlViews)[number]['id']>('manual');
+  const [activeView, setActiveView] = useState<(typeof controlViews)[number]['id']>('automatic');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingControlId, setSavingControlId] = useState('');
+  const [savingMode, setSavingMode] = useState(false);
   const [error, setError] = useState('');
   const [brokerState, setBrokerState] = useState('Menghubungkan');
 
@@ -39,6 +41,7 @@ export default function ControlScreen() {
       const dashboard = await fetchDashboard();
       setManualControls(dashboard.manualControls ?? []);
       setDevicePhase(dashboard.devicePhase ?? 'Menunggu data perangkat');
+      setActiveView(dashboard.nutrientMode === 'Manual' ? 'manual' : 'automatic');
       setError('');
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Gagal memuat data kontrol.');
@@ -77,11 +80,20 @@ export default function ControlScreen() {
       const unsubscribeStatus = subscribeTopic(mqttTopics.status, (message) => {
         try {
           const payload = JSON.parse(message) as {
+            nutrientMode?: string;
             controls?: ManualControl[];
+            mode?: string;
+            controlMode?: number;
           };
 
           if (Array.isArray(payload.controls)) {
             setManualControls(payload.controls);
+          }
+
+          if (payload.controlMode === 1 || payload.mode === 'manual' || payload.nutrientMode === 'Manual') {
+            setActiveView('manual');
+          } else if (payload.controlMode === 0 || payload.mode === 'automatic' || payload.nutrientMode === 'Otomatis') {
+            setActiveView('automatic');
           }
         } catch {
           setBrokerState('Data tidak valid');
@@ -125,6 +137,28 @@ export default function ControlScreen() {
     }
   }
 
+  async function handleSelectMode(nextMode: (typeof controlViews)[number]['id']) {
+    if (savingMode || activeView === nextMode) {
+      return;
+    }
+
+    setSavingMode(true);
+
+    try {
+      const label = await updateNutrientMode(nextMode);
+      setActiveView(label === 'Manual' ? 'manual' : 'automatic');
+      publishTopic(mqttTopics.control, {
+        type: 'control_mode',
+        value: nextMode,
+      });
+      setError('');
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Gagal mengubah mode kontrol.');
+    } finally {
+      setSavingMode(false);
+    }
+  }
+
   if (!user) {
     return <Redirect href="/login" />;
   }
@@ -163,7 +197,7 @@ export default function ControlScreen() {
         <View style={styles.modeRow}>
           <View style={styles.modeCard}>
             <ThemedText style={styles.modeLabel}>Mode yang sedang dipakai</ThemedText>
-            <ThemedText style={styles.modeValue}>Otomatis</ThemedText>
+            <ThemedText style={styles.modeValue}>{activeView === 'manual' ? 'Manual' : 'Otomatis'}</ThemedText>
           </View>
           <View style={styles.modeBadge}>
             <ThemedText style={styles.modeBadgeText}>{brokerState}</ThemedText>
@@ -184,9 +218,10 @@ export default function ControlScreen() {
             <Pressable
               key={item.id}
               style={[styles.viewTab, selected ? styles.viewTabActive : null]}
-              onPress={() => setActiveView(item.id)}>
+              onPress={() => handleSelectMode(item.id).catch(() => undefined)}
+              disabled={savingMode}>
               <ThemedText style={[styles.viewTabText, selected ? styles.viewTabTextActive : null]}>
-                {item.label}
+                {savingMode && selected ? 'Memproses...' : item.label}
               </ThemedText>
             </Pressable>
           );
@@ -203,7 +238,7 @@ export default function ControlScreen() {
           </View>
 
           <ThemedText style={styles.panelLead}>
-            Gunakan mode ini untuk menyalakan atau mematikan pompa air secara langsung dari aplikasi.
+            KNN nonaktif, pompa nutrisi dan pompa air dikontrol manual dari aplikasi.
           </ThemedText>
 
           {manualControls.map((item) => {
@@ -253,17 +288,17 @@ export default function ControlScreen() {
             <ThemedText type="subtitle" style={styles.automaticTitle}>
               Mode otomatis
             </ThemedText>
-            <ThemedText style={styles.automaticHint}>Aktif</ThemedText>
+            <ThemedText style={styles.automaticHint}>{activeView === 'automatic' ? 'Aktif' : 'Nonaktif'}</ThemedText>
           </View>
 
           <ThemedText style={styles.automaticLead}>
-            Sistem berjalan dalam mode otomatis tanpa label tambahan agar tampilan kontrol tetap ringkas dan bersih.
+            Sistem dikontrol otomatis oleh KNN. Tombol manual pompa dinonaktifkan selama mode otomatis aktif.
           </ThemedText>
 
           <View style={styles.autoInfoCard}>
             <ThemedText style={styles.autoInfoTitle}>Mode aktif: Otomatis</ThemedText>
             <ThemedText style={styles.autoInfoText}>
-              Pengaturan perangkat mengikuti alur otomatis sistem. Operator tidak perlu memilih mode fase lain dari aplikasi.
+              ESP32 menjalankan pompa nutrisi berdasarkan hasil model KNN dan kontrol manual tidak mengganggu pompa.
             </ThemedText>
           </View>
         </View>
