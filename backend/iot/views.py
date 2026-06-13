@@ -46,23 +46,38 @@ def build_excel_table_response(filename: str, title: str, columns: list[str], ro
 def build_xlsx_response(filename: str, columns: list[str], rows: list[list[object]]) -> HttpResponse:
     workbook = BytesIO()
 
-    def make_cell(value: object) -> str:
+    def column_letter(index: int) -> str:
+        result = ""
+        current = index
+        while current > 0:
+            current, remainder = divmod(current - 1, 26)
+            result = chr(65 + remainder) + result
+        return result
+
+    def make_cell(cell_ref: str, value: object) -> str:
         text = "" if value is None else str(value)
         return (
-            '<c t="inlineStr">'
+            f'<c r="{cell_ref}" t="inlineStr">'
             f"<is><t>{xml_escape(text)}</t></is>"
             "</c>"
         )
 
     sheet_rows: list[str] = []
     all_rows = [columns, *rows]
-    for index, row in enumerate(all_rows, start=1):
-        cells = "".join(make_cell(value) for value in row)
-        sheet_rows.append(f'<row r="{index}">{cells}</row>')
+    max_column = len(columns)
+    for row_index, row in enumerate(all_rows, start=1):
+        cells = "".join(
+            make_cell(f"{column_letter(column_index)}{row_index}", value)
+            for column_index, value in enumerate(row, start=1)
+        )
+        sheet_rows.append(f'<row r="{row_index}">{cells}</row>')
+
+    last_cell = f"{column_letter(max_column)}{len(all_rows)}" if all_rows else "A1"
 
     sheet_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<dimension ref="A1:{last_cell}"/>'
         "<sheetData>"
         f'{"".join(sheet_rows)}'
         "</sheetData>"
@@ -106,6 +121,7 @@ def build_xlsx_response(filename: str, columns: list[str], rows: list[list[objec
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            "<bookViews><workbookView activeTab=\"0\"/></bookViews>"
             "<sheets>"
             '<sheet name="Monitoring" sheetId="1" r:id="rId1"/>'
             "</sheets>"
@@ -373,7 +389,13 @@ def readings_view(request):
 
 @require_GET
 def readings_export_excel_view(request):
-    queryset = SensorReading.objects.select_related("block").all()
+    queryset = SensorReading.objects.values_list(
+        "recorded_at",
+        "temperature_c",
+        "ph",
+        "tds_ppm",
+        "pump_status",
+    )
     columns = [
         "Waktu",
         "Suhu Air (°C)",
@@ -383,13 +405,13 @@ def readings_export_excel_view(request):
     ]
     rows = []
 
-    for item in queryset:
+    for recorded_at, temperature_c, ph, tds_ppm, pump_status in queryset:
         rows.append([
-            item.recorded_at.isoformat(),
-            item.temperature_c,
-            item.ph,
-            item.tds_ppm,
-            "ON" if item.pump_status else "OFF",
+            recorded_at.isoformat() if recorded_at else "",
+            temperature_c,
+            ph,
+            tds_ppm,
+            "ON" if pump_status else "OFF",
         ])
 
     return build_xlsx_response(
