@@ -1,5 +1,8 @@
 import json
 from html import escape
+from io import BytesIO
+from xml.sax.saxutils import escape as xml_escape
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -36,6 +39,113 @@ def build_excel_table_response(filename: str, title: str, columns: list[str], ro
 </html>
 """
     response = HttpResponse(body, content_type="application/vnd.ms-excel; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def build_xlsx_response(filename: str, columns: list[str], rows: list[list[object]]) -> HttpResponse:
+    workbook = BytesIO()
+
+    def make_cell(value: object) -> str:
+        text = "" if value is None else str(value)
+        return (
+            '<c t="inlineStr">'
+            f"<is><t>{xml_escape(text)}</t></is>"
+            "</c>"
+        )
+
+    sheet_rows: list[str] = []
+    all_rows = [columns, *rows]
+    for index, row in enumerate(all_rows, start=1):
+        cells = "".join(make_cell(value) for value in row)
+        sheet_rows.append(f'<row r="{index}">{cells}</row>')
+
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        "<sheetData>"
+        f'{"".join(sheet_rows)}'
+        "</sheetData>"
+        "</worksheet>"
+    )
+
+    with ZipFile(workbook, "w", ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '<Override PartName="/docProps/core.xml" '
+            'ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+            '<Override PartName="/docProps/app.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+            "</Types>",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+            'Target="xl/workbook.xml"/>'
+            '<Relationship Id="rId2" '
+            'Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" '
+            'Target="docProps/core.xml"/>'
+            '<Relationship Id="rId3" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" '
+            'Target="docProps/app.xml"/>'
+            "</Relationships>",
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            "<sheets>"
+            '<sheet name="Monitoring" sheetId="1" r:id="rId1"/>'
+            "</sheets>"
+            "</workbook>",
+        )
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            'Target="worksheets/sheet1.xml"/>'
+            "</Relationships>",
+        )
+        archive.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        archive.writestr(
+            "docProps/core.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+            'xmlns:dcterms="http://purl.org/dc/terms/" '
+            'xmlns:dcmitype="http://purl.org/dc/dcmitype/" '
+            'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            "<dc:title>Hydrigo Monitoring Export</dc:title>"
+            "<dc:creator>Hydrigo</dc:creator>"
+            "</cp:coreProperties>",
+        )
+        archive.writestr(
+            "docProps/app.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" '
+            'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+            "<Application>Hydrigo</Application>"
+            "</Properties>",
+        )
+
+    response = HttpResponse(
+        workbook.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 
@@ -265,61 +375,25 @@ def readings_view(request):
 def readings_export_excel_view(request):
     queryset = SensorReading.objects.select_related("block").all()
     columns = [
-        "reading_id",
-        "transaction_id",
-        "device_id",
-        "lettuce_bed_id",
-        "air_temperature_c",
-        "temperature_c",
-        "humidity_pct",
-        "ph",
-        "tds_ppm",
-        "water_distance_cm",
-        "water_level_pct",
-        "light_lux",
-        "pump_prediction",
-        "pump_status",
-        "device_phase",
-        "recorded_at",
-        "received_at",
-        "signature",
-        "block_index",
-        "block_hash",
-        "previous_hash",
-        "payload_hash",
+        "Waktu",
+        "Suhu Air (°C)",
+        "pH",
+        "TDS (ppm)",
+        "Status Pompa",
     ]
     rows = []
 
     for item in queryset:
-        block = getattr(item, "block", None)
         rows.append([
-            item.id,
-            item.transaction_id,
-            item.device_id,
-            item.lettuce_bed_id,
-            item.air_temperature_c,
+            item.recorded_at.isoformat(),
             item.temperature_c,
-            item.humidity_pct,
             item.ph,
             item.tds_ppm,
-            item.water_distance_cm,
-            item.water_level_pct,
-            item.light_lux,
-            item.pump_prediction,
-            item.pump_status,
-            item.device_phase,
-            item.recorded_at.isoformat(),
-            item.received_at.isoformat(),
-            item.signature,
-            block.block_index if block else "",
-            block.block_hash if block else "",
-            block.previous_hash if block else "",
-            block.payload_hash if block else "",
+            "ON" if item.pump_status else "OFF",
         ])
 
-    return build_excel_table_response(
-        filename="hydrigo-dataset.xls",
-        title="Hydrigo Dataset",
+    return build_xlsx_response(
+        filename="hydrigo-dataset.xlsx",
         columns=columns,
         rows=rows,
     )

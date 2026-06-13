@@ -1,6 +1,7 @@
 import { Redirect, router } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -24,6 +25,38 @@ function getRoleDescription(role: 'admin' | 'viewer') {
   return role === 'admin'
     ? 'Bisa memantau sistem sekaligus mengubah mode dan kontrol perangkat.'
     : 'Fokus untuk melihat data budidaya tanpa akses ke tab kontrol.';
+}
+
+function buildDatasetFilename() {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return `hydrigo-dataset-${stamp}.xlsx`;
+}
+
+async function saveFileToAndroidDownloads(fileUri: string, fileName: string) {
+  const downloadsUri = FileSystem.StorageAccessFramework.getUriForDirectoryInRoot('Download');
+  const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync(downloadsUri);
+
+  if (!permissions.granted || !permissions.directoryUri) {
+    throw new Error('Izin folder Download tidak diberikan.');
+  }
+
+  const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(
+    permissions.directoryUri,
+    fileName.replace(/\.xlsx$/i, ''),
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
+
+  const base64Content = await FileSystem.readAsStringAsync(fileUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  await FileSystem.StorageAccessFramework.writeAsStringAsync(targetUri, base64Content, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  return targetUri;
 }
 
 export default function AccountScreen() {
@@ -66,41 +99,133 @@ export default function AccountScreen() {
         throw new Error('Direktori penyimpanan aplikasi tidak tersedia.');
       }
 
-      const fileUri = `${baseDirectory}hydrigo-dataset.xls`;
+      const fileName = buildDatasetFilename();
+      const fileUri = `${baseDirectory}${fileName}`;
       const result = await FileSystem.downloadAsync(url, fileUri);
 
-      Alert.alert('Download selesai', 'Dataset Excel berhasil diunduh ke penyimpanan aplikasi.', [
-        {
-          text: 'Tutup',
-          style: 'cancel',
-        },
-        {
-          text: 'Buka file',
-          onPress: () => {
-            const nextUriPromise =
-              Platform.OS === 'android' ? FileSystem.getContentUriAsync(result.uri).catch(() => result.uri) : Promise.resolve(result.uri);
+      if (Platform.OS === 'android') {
+        const downloadUri = await saveFileToAndroidDownloads(result.uri, fileName);
 
-            nextUriPromise
-              .then(async (nextUri) => {
-                const supported = await Linking.canOpenURL(nextUri);
+        Alert.alert(
+          'Download selesai',
+          `Dataset Excel berhasil disimpan ke folder Download perangkat.\n\nFile: ${fileName}`,
+          [
+            {
+              text: 'Tutup',
+              style: 'cancel',
+            },
+            {
+              text: 'Buka file',
+              onPress: () => {
+                Linking.openURL(downloadUri).catch((openError) => {
+                  Alert.alert(
+                    'File tersimpan di Download',
+                    openError instanceof Error
+                      ? `${openError.message}\n\nURI file: ${downloadUri}`
+                      : `Dataset tersimpan di Download.\n\nURI file: ${downloadUri}`,
+                  );
+                });
+              },
+            },
+          ],
+        );
+        return;
+      }
 
-                if (!supported) {
-                  throw new Error('File berhasil diunduh, tetapi tidak ada aplikasi yang bisa membukanya.');
-                }
+      const sharingAvailable = await Sharing.isAvailableAsync().catch(() => false);
 
-                await Linking.openURL(nextUri);
-              })
-              .catch((openError) => {
-                Alert.alert(
-                  'File tersimpan',
-                  openError instanceof Error
-                    ? `${openError.message}\n\nLokasi file: ${result.uri}`
-                    : `Dataset berhasil diunduh.\n\nLokasi file: ${result.uri}`,
-                );
-              });
+      if (sharingAvailable) {
+        Alert.alert(
+          'Download selesai',
+          `Dataset Excel berhasil diunduh ke penyimpanan lokal aplikasi.\n\nPilih "Bagikan / Simpan" agar file dipindahkan atau disalin ke Files, Downloads, Drive, atau aplikasi lain di perangkat.\n\nFile: ${fileName}`,
+          [
+            {
+              text: 'Tutup',
+              style: 'cancel',
+            },
+            {
+              text: 'Bagikan / Simpan',
+              onPress: () => {
+                Sharing.shareAsync(result.uri, {
+                  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  dialogTitle: 'Simpan atau bagikan dataset Hydrigo',
+                  UTI: 'org.openxmlformats.spreadsheetml.sheet',
+                }).catch((shareError) => {
+                  Alert.alert(
+                    'File tersimpan lokal',
+                    shareError instanceof Error
+                      ? `${shareError.message}\n\nLokasi file lokal: ${result.uri}`
+                      : `Dataset berhasil diunduh ke perangkat.\n\nLokasi file lokal: ${result.uri}`,
+                  );
+                });
+              },
+            },
+            {
+              text: 'Buka file',
+              onPress: () => {
+                const nextUriPromise =
+                  Platform.OS === 'android'
+                    ? FileSystem.getContentUriAsync(result.uri).catch(() => result.uri)
+                    : Promise.resolve(result.uri);
+
+                nextUriPromise
+                  .then(async (nextUri) => {
+                    const supported = await Linking.canOpenURL(nextUri);
+
+                    if (!supported) {
+                      throw new Error('File berhasil diunduh, tetapi tidak ada aplikasi yang bisa membukanya.');
+                    }
+
+                    await Linking.openURL(nextUri);
+                  })
+                  .catch((openError) => {
+                    Alert.alert(
+                      'File tersimpan lokal',
+                      openError instanceof Error
+                        ? `${openError.message}\n\nLokasi file lokal: ${result.uri}`
+                        : `Dataset berhasil diunduh ke perangkat.\n\nLokasi file lokal: ${result.uri}`,
+                    );
+                  });
+              },
+            },
+          ],
+        );
+      } else {
+        Alert.alert('Download selesai', `Dataset Excel berhasil diunduh ke penyimpanan lokal perangkat.\n\nFile: ${fileName}`, [
+          {
+            text: 'Tutup',
+            style: 'cancel',
           },
-        },
-      ]);
+          {
+            text: 'Buka file',
+            onPress: () => {
+              const nextUriPromise =
+                Platform.OS === 'android'
+                  ? FileSystem.getContentUriAsync(result.uri).catch(() => result.uri)
+                  : Promise.resolve(result.uri);
+
+              nextUriPromise
+                .then(async (nextUri) => {
+                  const supported = await Linking.canOpenURL(nextUri);
+
+                  if (!supported) {
+                    throw new Error('File berhasil diunduh, tetapi tidak ada aplikasi yang bisa membukanya.');
+                  }
+
+                  await Linking.openURL(nextUri);
+                })
+                .catch((openError) => {
+                  Alert.alert(
+                    'File tersimpan lokal',
+                    openError instanceof Error
+                      ? `${openError.message}\n\nLokasi file lokal: ${result.uri}`
+                      : `Dataset berhasil diunduh ke perangkat.\n\nLokasi file lokal: ${result.uri}`,
+                  );
+                });
+            },
+          },
+        ]);
+      }
     } catch (downloadError) {
       Alert.alert(
         'Download gagal',
@@ -168,7 +293,7 @@ export default function AccountScreen() {
           <ThemedText style={styles.sectionLabel}>Dataset</ThemedText>
           <ThemedText style={styles.roleTitle}>Export data hydroponic</ThemedText>
           <ThemedText style={styles.roleBody}>
-            Unduh dataset Excel yang berisi reading sensor beserta metadata blockchain untuk kebutuhan audit atau analisis.
+            Unduh dataset Excel (.xlsx). Di Android file akan disimpan ke folder Download perangkat setelah izin diberikan.
           </ThemedText>
           <View style={styles.optionList}>
             {exportOptions.map((option) => {
