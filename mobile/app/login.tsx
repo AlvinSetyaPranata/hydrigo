@@ -8,8 +8,8 @@ import { useAuth } from '@/lib/auth';
 
 export default function LoginScreen() {
   const { login, user } = useAuth();
-  const [email, setEmail] = useState('admin@hydrigo.app');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('user@hydrigo.app');
+  const [password, setPassword] = useState('user123');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState('');
 
@@ -39,6 +39,12 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.card}>
+          <View style={styles.demoCard}>
+            <ThemedText style={styles.demoTitle}>Akun demo</ThemedText>
+            <ThemedText style={styles.demoText}>User: `user@hydrigo.app` / `user123`</ThemedText>
+            <ThemedText style={styles.demoText}>Admin: `admin@hydrigo.app` / `admin123`</ThemedText>
+          </View>
+
           <ThemedText style={styles.label}>Email</ThemedText>
           <TextInput
             value={email}
@@ -134,6 +140,22 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 4,
+  },
+  demoCard: {
+    borderRadius: 18,
+    backgroundColor: '#edf6e9',
+    padding: 14,
+    gap: 4,
+  },
+  demoTitle: {
+    color: '#1d4324',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  demoText: {
+    color: '#456052',
+    fontSize: 13,
+    lineHeight: 18,
   },
   label: {
     color: '#21422b',

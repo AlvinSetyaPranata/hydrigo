@@ -17,7 +17,9 @@ type HeroStat = {
 
 type SensorSnapshot = {
   ph: string;
+  nutrient: string;
   waterTemp: string;
+  airTemp: string;
   humidity: string;
   waterLevel: string;
 };
@@ -347,8 +349,18 @@ export function getLedgerBaseUrl() {
   return getApiBaseUrl();
 }
 
-export function getDatasetExcelDownloadUrl() {
-  return buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/readings/export.xls`);
+export function getDatasetExcelDownloadUrl(filters?: { startDate?: string; endDate?: string }) {
+  const url = new URL(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/readings/export.xls`));
+
+  if (filters?.startDate) {
+    url.searchParams.set('start_date', filters.startDate);
+  }
+
+  if (filters?.endDate) {
+    url.searchParams.set('end_date', filters.endDate);
+  }
+
+  return url.toString();
 }
 
 function buildUrl(baseUrl: string | null, path: string) {
@@ -403,7 +415,9 @@ function buildDashboardData(readings: Reading[]): DashboardData {
       ],
       sensorSnapshot: {
         ph: '--',
+        nutrient: '--',
         waterTemp: '--',
+        airTemp: '--',
         humidity: '--',
         waterLevel: '--',
       },
@@ -515,7 +529,9 @@ function buildDashboardData(readings: Reading[]): DashboardData {
     ],
     sensorSnapshot: {
       ph: formatNumber(latest.ph),
+      nutrient: `${formatNumber(latest.tds_ppm, 0)} ppm`,
       waterTemp: `${formatNumber(latest.temperature_c)}°C`,
+      airTemp: latest.air_temperature_c != null ? `${formatNumber(latest.air_temperature_c)}°C` : '--',
       humidity: formatPercent(latest.humidity_pct),
       waterLevel: formatPercent(latest.water_level_pct),
     },

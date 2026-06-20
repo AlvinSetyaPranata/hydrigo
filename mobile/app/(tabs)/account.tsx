@@ -3,7 +3,7 @@ import * as Linking from 'expo-linking';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/lib/auth';
@@ -18,13 +18,13 @@ const exportOptions = [
 ] as const;
 
 function getRoleLabel(role: 'admin' | 'viewer') {
-  return role === 'admin' ? 'Admin kontrol' : 'User pemantau';
+  return role === 'admin' ? 'Admin kontrol' : 'User';
 }
 
 function getRoleDescription(role: 'admin' | 'viewer') {
   return role === 'admin'
     ? 'Bisa memantau sistem sekaligus mengubah mode dan kontrol perangkat.'
-    : 'Fokus untuk melihat data budidaya tanpa akses ke tab kontrol.';
+    : 'Hanya bisa memantau data budidaya tanpa akses ke tab kontrol dan fitur admin.';
 }
 
 function buildDatasetFilename() {
@@ -63,6 +63,8 @@ export default function AccountScreen() {
   const { user, logout } = useAuth();
   const [downloading, setDownloading] = useState(false);
   const [selectedExportOption, setSelectedExportOption] = useState<(typeof exportOptions)[number]['id']>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   if (!user) {
     return <Redirect href="/login" />;
@@ -90,9 +92,31 @@ export default function AccountScreen() {
       return;
     }
 
+    const normalizedStartDate = startDate.trim();
+    const normalizedEndDate = endDate.trim();
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (normalizedStartDate && !datePattern.test(normalizedStartDate)) {
+      Alert.alert('Tanggal awal tidak valid', 'Gunakan format YYYY-MM-DD, misalnya 2026-06-20.');
+      return;
+    }
+
+    if (normalizedEndDate && !datePattern.test(normalizedEndDate)) {
+      Alert.alert('Tanggal akhir tidak valid', 'Gunakan format YYYY-MM-DD, misalnya 2026-06-20.');
+      return;
+    }
+
+    if (normalizedStartDate && normalizedEndDate && normalizedStartDate > normalizedEndDate) {
+      Alert.alert('Rentang tanggal tidak valid', 'Tanggal awal tidak boleh lebih besar dari tanggal akhir.');
+      return;
+    }
+
     try {
       setDownloading(true);
-      const url = getDatasetExcelDownloadUrl();
+      const url = getDatasetExcelDownloadUrl({
+        startDate: normalizedStartDate || undefined,
+        endDate: normalizedEndDate || undefined,
+      });
       const baseDirectory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
 
       if (!baseDirectory) {
@@ -295,6 +319,40 @@ export default function AccountScreen() {
           <ThemedText style={styles.roleBody}>
             Unduh dataset Excel (.xlsx). Di Android file akan disimpan ke folder Download perangkat setelah izin diberikan.
           </ThemedText>
+          <View style={styles.filterGroup}>
+            <ThemedText style={styles.filterLabel}>Filter tanggal export</ThemedText>
+            <View style={styles.filterRow}>
+              <View style={styles.filterInputWrap}>
+                <ThemedText style={styles.inputLabel}>Tanggal awal</ThemedText>
+                <TextInput
+                  value={startDate}
+                  onChangeText={setStartDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#8ba08d"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.dateInput}
+                />
+              </View>
+              <View style={styles.filterInputWrap}>
+                <ThemedText style={styles.inputLabel}>Tanggal akhir</ThemedText>
+                <TextInput
+                  value={endDate}
+                  onChangeText={setEndDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#8ba08d"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.dateInput}
+                />
+              </View>
+            </View>
+            <ThemedText style={styles.filterHint}>
+              Kosongkan jika ingin export semua data. Format tanggal: YYYY-MM-DD.
+            </ThemedText>
+          </View>
           <View style={styles.optionList}>
             {exportOptions.map((option) => {
               const selected = selectedExportOption === option.id;
@@ -474,6 +532,41 @@ const styles = StyleSheet.create({
   optionList: {
     gap: 10,
     marginTop: 4,
+  },
+  filterGroup: {
+    marginTop: 8,
+    gap: 10,
+  },
+  filterLabel: {
+    color: '#244230',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  filterRow: {
+    gap: 10,
+  },
+  filterInputWrap: {
+    gap: 6,
+  },
+  inputLabel: {
+    color: '#476050',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dateInput: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d8e4d4',
+    backgroundColor: '#f8fbf5',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: '#173122',
+    fontSize: 15,
+  },
+  filterHint: {
+    color: '#5f775f',
+    fontSize: 13,
+    lineHeight: 19,
   },
   optionCard: {
     borderRadius: 18,

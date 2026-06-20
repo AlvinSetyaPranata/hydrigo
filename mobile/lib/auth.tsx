@@ -37,6 +37,12 @@ const defaultAccounts: StoredAccount[] = [
     role: 'admin',
   },
   {
+    email: 'user@hydrigo.app',
+    name: 'User Hydrigo',
+    password: 'user123',
+    role: 'viewer',
+  },
+  {
     email: 'viewer@hydrigo.app',
     name: 'Viewer Hydrigo',
     password: 'viewer123',

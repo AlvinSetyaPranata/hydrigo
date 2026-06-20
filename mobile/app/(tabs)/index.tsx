@@ -8,7 +8,9 @@ import { attachBrokerListeners, mqttTopics, subscribeTopic } from '@/lib/mqttCli
 
 const emptySnapshot = {
   ph: '--',
+  nutrient: '--',
   waterTemp: '--',
+  airTemp: '--',
   humidity: '--',
   waterLevel: '--',
 };
@@ -78,7 +80,9 @@ export default function DashboardScreen() {
           const payload = JSON.parse(message) as Partial<typeof emptySnapshot>;
           setSensorSnapshot((current) => ({
             ph: payload.ph ?? current.ph,
+            nutrient: payload.nutrient ?? payload.tds ?? current.nutrient,
             waterTemp: payload.waterTemp ?? current.waterTemp,
+            airTemp: payload.airTemp ?? current.airTemp,
             humidity: payload.humidity ?? current.humidity,
             waterLevel: payload.waterLevel ?? current.waterLevel,
           }));
@@ -269,12 +273,20 @@ export default function DashboardScreen() {
             <ThemedText style={styles.snapshotValue}>{sensorSnapshot.humidity}</ThemedText>
           </View>
           <View style={styles.snapshotItem}>
+            <ThemedText style={styles.snapshotLabel}>Nutrisi</ThemedText>
+            <ThemedText style={styles.snapshotValue}>{sensorSnapshot.nutrient}</ThemedText>
+          </View>
+          <View style={styles.snapshotItem}>
             <ThemedText style={styles.snapshotLabel}>pH larutan</ThemedText>
             <ThemedText style={styles.snapshotValue}>{sensorSnapshot.ph}</ThemedText>
           </View>
           <View style={styles.snapshotItem}>
             <ThemedText style={styles.snapshotLabel}>Suhu air</ThemedText>
             <ThemedText style={styles.snapshotValue}>{sensorSnapshot.waterTemp}</ThemedText>
+          </View>
+          <View style={styles.snapshotItem}>
+            <ThemedText style={styles.snapshotLabel}>Suhu udara</ThemedText>
+            <ThemedText style={styles.snapshotValue}>{sensorSnapshot.airTemp}</ThemedText>
           </View>
           <View style={styles.snapshotItem}>
             <ThemedText style={styles.snapshotLabel}>Level ketinggian air</ThemedText>

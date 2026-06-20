@@ -1,10 +1,12 @@
 import json
+from datetime import date, datetime, time
 from html import escape
 from io import BytesIO
 from xml.sax.saxutils import escape as xml_escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.http import HttpResponse, JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -164,6 +166,13 @@ def build_xlsx_response(filename: str, columns: list[str], rows: list[list[objec
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+def parse_export_date(value: str, field_name: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"{field_name} harus format YYYY-MM-DD")
 
 
 def ensure_manual_controls():
@@ -389,6 +398,18 @@ def readings_view(request):
 
 @require_GET
 def readings_export_excel_view(request):
+    start_date_raw = (request.GET.get("start_date") or "").strip()
+    end_date_raw = (request.GET.get("end_date") or "").strip()
+
+    try:
+        start_date = parse_export_date(start_date_raw, "start_date") if start_date_raw else None
+        end_date = parse_export_date(end_date_raw, "end_date") if end_date_raw else None
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    if start_date and end_date and start_date > end_date:
+        return JsonResponse({"error": "start_date tidak boleh lebih besar dari end_date"}, status=400)
+
     queryset = SensorReading.objects.values_list(
         "recorded_at",
         "temperature_c",
@@ -396,6 +417,15 @@ def readings_export_excel_view(request):
         "tds_ppm",
         "pump_status",
     )
+
+    if start_date:
+        start_at = timezone.make_aware(datetime.combine(start_date, time.min))
+        queryset = queryset.filter(recorded_at__gte=start_at)
+
+    if end_date:
+        end_at = timezone.make_aware(datetime.combine(end_date, time.max))
+        queryset = queryset.filter(recorded_at__lte=end_at)
+
     columns = [
         "Waktu",
         "Suhu Air (°C)",

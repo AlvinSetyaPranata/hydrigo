@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/lib/auth';
 
 const roleOptions = [
-  { value: 'viewer', label: 'User pemantau' },
+  { value: 'viewer', label: 'User' },
   { value: 'admin', label: 'Admin kontrol' },
 ] as const;
 

@@ -1,6 +1,10 @@
 import json
+from datetime import timezone as dt_timezone
+from io import BytesIO
+from zipfile import ZipFile
 
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from .models import ControlMode, IngestTransaction, ManualControl, SensorReading
 from .services import verify_chain
@@ -221,3 +225,55 @@ class IoTIngestTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ControlMode.objects.first().mode, "manual")
         self.assertEqual(ManualControl.objects.get(control_id="water-pump").status, True)
+
+    def test_export_excel_filters_by_date_range(self):
+        SensorReading.objects.create(
+            transaction_id="txn-old",
+            device_id="esp32-selada-01",
+            lettuce_bed_id="bed-a1",
+            temperature_c=21.5,
+            air_temperature_c=29.0,
+            humidity_pct=70.0,
+            ph=6.1,
+            tds_ppm=780.0,
+            water_level_pct=60.0,
+            pump_prediction=0,
+            pump_status=False,
+            light_lux=0.0,
+            recorded_at=timezone.datetime(2026, 4, 18, 9, 0, tzinfo=dt_timezone.utc),
+            received_at=timezone.datetime(2026, 4, 18, 9, 0, tzinfo=dt_timezone.utc),
+        )
+        SensorReading.objects.create(
+            transaction_id="txn-in-range",
+            device_id="esp32-selada-01",
+            lettuce_bed_id="bed-a1",
+            temperature_c=22.2,
+            air_temperature_c=29.5,
+            humidity_pct=71.0,
+            ph=6.3,
+            tds_ppm=800.0,
+            water_level_pct=62.0,
+            pump_prediction=1,
+            pump_status=True,
+            light_lux=0.0,
+            recorded_at=timezone.datetime(2026, 4, 19, 10, 0, tzinfo=dt_timezone.utc),
+            received_at=timezone.datetime(2026, 4, 19, 10, 0, tzinfo=dt_timezone.utc),
+        )
+
+        response = self.client.get("/api/v1/readings/export.xls?start_date=2026-04-19&end_date=2026-04-19")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        workbook = ZipFile(BytesIO(response.content))
+        sheet_xml = workbook.read("xl/worksheets/sheet1.xml")
+        self.assertIn(b"2026-04-19T10:00:00+00:00", sheet_xml)
+        self.assertNotIn(b"2026-04-18T09:00:00+00:00", sheet_xml)
+
+    def test_export_excel_rejects_invalid_date_range(self):
+        response = self.client.get("/api/v1/readings/export.xls?start_date=2026-04-20&end_date=2026-04-19")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "start_date tidak boleh lebih besar dari end_date")
