@@ -1,4 +1,5 @@
 import mqtt, { type MqttClient } from 'mqtt';
+import Constants from 'expo-constants';
 
 import { getApiBaseUrl } from '@/lib/api';
 
@@ -10,6 +11,11 @@ let client: MqttClient | null = null;
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '');
+}
+
+function getExpoExtraString(key: string) {
+  const value = Constants.expoConfig?.extra?.[key];
+  return typeof value === 'string' ? value : '';
 }
 
 function getHostFromUrl(value: string) {
@@ -43,6 +49,12 @@ export function getBrokerUrl() {
     return trimTrailingSlash(configured.trim());
   }
 
+  const configuredFromAppConfig = getExpoExtraString('mqttBrokerUrl');
+
+  if (configuredFromAppConfig.trim()) {
+    return trimTrailingSlash(configuredFromAppConfig.trim());
+  }
+
   return getDefaultBrokerUrl();
 }
 
@@ -57,10 +69,10 @@ export function getMqttClient() {
     throw new Error('MQTT broker URL belum tersedia. Set EXPO_PUBLIC_MQTT_BROKER_URL untuk device fisik.');
   }
 
-  const username = process.env.EXPO_PUBLIC_MQTT_USERNAME;
-  const password = process.env.EXPO_PUBLIC_MQTT_PASSWORD;
-  const clientId =
-    process.env.EXPO_PUBLIC_MQTT_CLIENT_ID || `hydrigo-mobile-${Math.random().toString(16).slice(2, 10)}`;
+  const username = process.env.EXPO_PUBLIC_MQTT_USERNAME || getExpoExtraString('mqttUsername');
+  const password = process.env.EXPO_PUBLIC_MQTT_PASSWORD || getExpoExtraString('mqttPassword');
+  const configuredClientId = process.env.EXPO_PUBLIC_MQTT_CLIENT_ID || getExpoExtraString('mqttClientId');
+  const clientId = configuredClientId || `hydrigo-mobile-${Math.random().toString(16).slice(2, 10)}`;
 
   client = mqtt.connect(brokerUrl, {
     clientId,

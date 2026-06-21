@@ -3,6 +3,11 @@ import Constants from 'expo-constants';
 const VPS_BASE_URL = 'http://109.110.188.181';
 const HYDROPONICS_API_PREFIX = '/api/hydroponics';
 
+function getExpoExtraString(key: string) {
+  const value = Constants.expoConfig?.extra?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
 type SummaryCard = {
   label: string;
   value: string;
@@ -336,6 +341,12 @@ export function getApiBaseUrl() {
     return trimTrailingSlash(configured.trim());
   }
 
+  const configuredFromAppConfig = getExpoExtraString('apiBaseUrl');
+
+  if (configuredFromAppConfig.trim()) {
+    return trimTrailingSlash(configuredFromAppConfig.trim());
+  }
+
   return VPS_BASE_URL;
 }
 
@@ -344,6 +355,12 @@ export function getLedgerBaseUrl() {
 
   if (configured && configured.trim()) {
     return trimTrailingSlash(configured.trim());
+  }
+
+  const configuredFromAppConfig = getExpoExtraString('ledgerApiBaseUrl');
+
+  if (configuredFromAppConfig.trim()) {
+    return trimTrailingSlash(configuredFromAppConfig.trim());
   }
 
   return getApiBaseUrl();

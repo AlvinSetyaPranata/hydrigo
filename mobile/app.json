@@ -22,6 +22,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.alvinsetya_p.hydrigo"
@@ -52,6 +53,12 @@
       "reactCompiler": true
     },
     "extra": {
+      "apiBaseUrl": "http://109.110.188.181",
+      "ledgerApiBaseUrl": "http://109.110.188.181",
+      "mqttBrokerUrl": "ws://109.110.188.181/mqtt",
+      "mqttUsername": "",
+      "mqttPassword": "",
+      "mqttClientId": "hydrigo-mobile",
       "router": {},
       "eas": {
         "projectId": "d299d597-6c94-4545-aeec-2af3b6d89679"
