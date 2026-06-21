@@ -103,6 +103,11 @@ export type DashboardData = {
   devicePhase: string;
 };
 
+type ResponseWithBody<T> = {
+  response: Response;
+ body: T;
+};
+
 export type LedgerBlock = {
   block_index: number;
   reading_id: number;
@@ -419,6 +424,17 @@ async function parseJson<T>(response: Response) {
   }
 }
 
+async function fetchJsonWithDetails<T>(url: string, label: string): Promise<ResponseWithBody<T>> {
+  try {
+    const response = await fetch(url);
+    const body = await parseJson<T>(response);
+    return { response, body };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`${label} gagal: ${message}`);
+  }
+}
+
 function buildDashboardData(readings: Reading[]): DashboardData {
   const latest = readings[0];
 
@@ -567,15 +583,17 @@ function buildDashboardData(readings: Reading[]): DashboardData {
 }
 
 export async function fetchDashboard() {
-  const [response, controlsResponse, modeResponse] = await Promise.all([
-    fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/readings?limit=20`)),
-    fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/controls/manual`)),
-    fetch(buildUrl(getApiBaseUrl(), `${HYDROPONICS_API_PREFIX}/api/v1/controls/mode`)),
-  ]);
-  const result = await parseJson<ReadingListResponse>(response);
+  const baseUrl = getApiBaseUrl();
+  const readingsUrl = buildUrl(baseUrl, `${HYDROPONICS_API_PREFIX}/api/v1/readings?limit=20`);
+  const controlsUrl = buildUrl(baseUrl, `${HYDROPONICS_API_PREFIX}/api/v1/controls/manual`);
+  const modeUrl = buildUrl(baseUrl, `${HYDROPONICS_API_PREFIX}/api/v1/controls/mode`);
 
-  if (!response.ok) {
-    throw new Error(result.error || 'Gagal memuat data hydroponics.');
+  const readingsResult = await fetchJsonWithDetails<ReadingListResponse>(readingsUrl, `GET ${readingsUrl}`);
+
+  if (!readingsResult.response.ok) {
+    throw new Error(
+      readingsResult.body.error || `GET ${readingsUrl} gagal dengan status ${readingsResult.response.status}.`,
+    );
   }
 
   let manualControlState: ManualControlState = {
@@ -583,31 +601,34 @@ export async function fetchDashboard() {
     pompaAir: false,
   };
 
-  if (controlsResponse.ok) {
-    try {
-      const controlsResult = await parseJson<ManualControlResponse>(controlsResponse);
-      manualControlState = normalizeManualControlState(controlsResult);
-    } catch {
-      manualControlState = {
-        pompaNutrisi: false,
-        pompaAir: false,
-      };
+  try {
+    const controlsResult = await fetchJsonWithDetails<ManualControlResponse>(controlsUrl, `GET ${controlsUrl}`);
+
+    if (controlsResult.response.ok) {
+      manualControlState = normalizeManualControlState(controlsResult.body);
+    } else {
+      console.warn('Hydrigo controls/manual failed', controlsResult.response.status, controlsResult.body);
     }
+  } catch (error) {
+    console.warn('Hydrigo controls/manual request error', error);
   }
 
-  let nutrientMode = buildDashboardData(result.data ?? []).nutrientMode;
+  let nutrientMode = buildDashboardData(readingsResult.body.data ?? []).nutrientMode;
 
-  if (modeResponse.ok) {
-    try {
-      const controlModeResult = await parseJson<ControlModeResponse>(modeResponse);
-      const normalizedMode = controlModeResult.data?.mode ?? controlModeResult.mode;
+  try {
+    const modeResult = await fetchJsonWithDetails<ControlModeResponse>(modeUrl, `GET ${modeUrl}`);
+
+    if (modeResult.response.ok) {
+      const normalizedMode = modeResult.body.data?.mode ?? modeResult.body.mode;
       nutrientMode = mapControlModeToLabel(normalizedMode, nutrientMode);
-    } catch {
-      // Fall back to the inferred label from the latest reading.
+    } else {
+      console.warn('Hydrigo controls/mode failed', modeResult.response.status, modeResult.body);
     }
+  } catch (error) {
+    console.warn('Hydrigo controls/mode request error', error);
   }
 
-  const dashboardData = buildDashboardData(result.data ?? []);
+  const dashboardData = buildDashboardData(readingsResult.body.data ?? []);
 
   return {
     ...dashboardData,
