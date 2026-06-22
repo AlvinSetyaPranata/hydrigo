@@ -49,12 +49,8 @@ Prasyarat:
 cp backend/.env.example backend/.env
 ```
 
-Gunakan PostgreSQL yang sudah terpasang di server atau di host/database terpisah. Stack Docker ini tidak lagi menjalankan container PostgreSQL sendiri.
-Untuk PostgreSQL yang berjalan langsung di host Linux yang sama, stack ini sudah mendukung:
-
-```bash
-POSTGRES_HOST=host.docker.internal
-```
+Stack deploy ini sekarang menjalankan PostgreSQL sebagai container di compose yang sama.
+Default koneksi backend diarahkan ke service Docker bernama `postgres`.
 
 Environment variable yang dipakai container:
 
@@ -66,7 +62,7 @@ HYDRIGO_DB_ENGINE=postgres
 POSTGRES_DB=hydrigo
 POSTGRES_USER=hydrigo
 POSTGRES_PASSWORD=change_me
-POSTGRES_HOST=host.docker.internal
+POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 ETH_RPC_URL=http://chain:8545
 ETH_CHAIN_ID=31337
@@ -95,7 +91,7 @@ Deploy path saat ini ditujukan untuk research/self-hosted mode:
 - private EVM chain dijalankan lokal via Docker
 - contract `HydrigoAnchor` dideploy otomatis ke chain itu
 - backend membaca artifact deploy dan memakai contract address tersebut bila `ETH_CONTRACT_ADDRESS` kosong
-- PostgreSQL dipakai sebagai database utama Django dan diasumsikan dikelola di luar container stack ini
+- PostgreSQL dipakai sebagai database utama Django dan dijalankan sebagai container `postgres` di stack ini
 - nginx menjadi entrypoint tunggal untuk HTTP dan MQTT WebSocket
 - MQTT TCP tetap tersedia langsung di port `1883`
 
