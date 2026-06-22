@@ -58,9 +58,9 @@
       "reactCompiler": true
     },
     "extra": {
-      "apiBaseUrl": "http://109.110.188.181:9000",
-      "ledgerApiBaseUrl": "http://109.110.188.181:9000",
-      "mqttBrokerUrl": "ws://109.110.188.181:9000/mqtt",
+      "apiBaseUrl": "http://109.110.188.181",
+      "ledgerApiBaseUrl": "http://109.110.188.181",
+      "mqttBrokerUrl": "ws://109.110.188.181/mqtt",
       "mqttUsername": "",
       "mqttPassword": "",
       "mqttClientId": "hydrigo-mobile",

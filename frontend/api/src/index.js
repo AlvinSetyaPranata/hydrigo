@@ -16,7 +16,7 @@ const mqttUrl = process.env.MQTT_URL || 'mqtt://mosquitto:1883'
 const mqttSensorTopic = process.env.MQTT_SENSOR_TOPIC || 'hydrigo/lettuce/sensor'
 const hydrigoForwardUrl =
   process.env.HYDRIGO_FORWARD_URL ||
-  'http://109.110.188.181:9000/api/hydroponics/api/v1/iot/readings'
+  'http://109.110.188.181/api/hydroponics/api/v1/iot/readings'
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
 const ingestQueue = new Queue('iot-ingest', { connection: redis })
 const pool = new Pool({ connectionString: databaseUrl })

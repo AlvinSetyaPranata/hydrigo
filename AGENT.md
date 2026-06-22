@@ -218,7 +218,7 @@ Backend deployment/runtime notes:
 - `docker-compose.deploy.yml` runs a single app container named `backend`.
 - Nginx forwards HTTP traffic to that one backend service.
 - Route separation between hydroponics and drip happens inside Django, not by separate backend containers.
-- Current VPS host/IP for deployed access is `109.110.188.181:9000`.
+- Current VPS host/IP for deployed access is `109.110.188.181`.
 
 ### Frontend env
 
@@ -240,8 +240,8 @@ Default frontend behavior:
 
 ### Mobile runtime defaults
 
-- Mobile should use VPS host `http://109.110.188.181:9000` as the default base host unless the task explicitly changes environments.
-- Hydroponics mobile API requests should target `http://109.110.188.181:9000/api/hydroponics/...`.
+- Mobile should use VPS host `http://109.110.188.181` as the default base host unless the task explicitly changes environments.
+- Hydroponics mobile API requests should target `http://109.110.188.181/api/hydroponics/...`.
 - When deriving MQTT from the API base host, prefer the same VPS host unless an explicit broker URL overrides it.
 
 ### IoT device runtime defaults
@@ -249,13 +249,13 @@ Default frontend behavior:
 - ESP32/device telemetry is MQTT-first, not direct-to-API.
 - Default broker host/IP is `109.110.188.181` on MQTT TCP port `1883`.
 - Default device publish topic is `hydrigo/lettuce/sensor`.
-- Device control fetch still uses HTTP endpoints under `http://109.110.188.181:9000/api/hydroponics/...` unless the task explicitly changes that design.
+- Device control fetch still uses HTTP endpoints under `http://109.110.188.181/api/hydroponics/...` unless the task explicitly changes that design.
 - The server-side bridge in `frontend/api/src/index.js` is responsible for forwarding MQTT sensor payloads into the Hydrigo ingest API.
 
 ### Current device data flow
 
 - `ESP32 -> MQTT broker topic hydrigo/lettuce/sensor`
-- `frontend/api` subscribes to that topic and forwards payloads to `http://109.110.188.181:9000/api/hydroponics/api/v1/iot/readings`
+- `frontend/api` subscribes to that topic and forwards payloads to `http://109.110.188.181/api/hydroponics/api/v1/iot/readings`
 - Django persists the forwarded ingest payload
 - Mobile/web clients read state from backend and may also use MQTT separately for UI sync
 
