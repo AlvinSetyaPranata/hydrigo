@@ -2,12 +2,8 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: hydrigo-postgres
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-hydrigo}
-      POSTGRES_USER: ${POSTGRES_USER:-hydrigo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    env_file:
+      - ./backend/.env
     volumes:
       - hydrigo_postgres_data:/var/lib/postgresql/data
     healthcheck:

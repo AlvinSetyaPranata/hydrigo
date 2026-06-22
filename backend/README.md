@@ -51,6 +51,8 @@ cp backend/.env.example backend/.env
 
 Stack deploy ini sekarang menjalankan PostgreSQL sebagai container di compose yang sama.
 Default koneksi backend diarahkan ke service Docker bernama `postgres`.
+User, password, dan database PostgreSQL akan dibuat otomatis oleh image `postgres`
+saat `./scripts/deploy_full_stack.sh` dijalankan pertama kali, memakai nilai dari `backend/.env`.
 
 Environment variable yang dipakai container:
 
