@@ -28,6 +28,12 @@ services:
       - test test test test test test test test test test test junk
     ports:
       - "${CHAIN_PORT:-8545}:8545"
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
     restart: unless-stopped
 
   contract-deployer:
@@ -48,7 +54,7 @@ services:
       postgres:
         condition: service_healthy
       chain:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - hydrigo_shared_deployments:/shared/deployments
     restart: "no"
@@ -80,7 +86,7 @@ services:
       postgres:
         condition: service_healthy
       chain:
-        condition: service_started
+        condition: service_healthy
       contract-deployer:
         condition: service_completed_successfully
     volumes:
