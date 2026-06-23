@@ -11,8 +11,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY backend /app
 COPY scripts/backend_container_entrypoint.sh /entrypoint.sh
+COPY scripts/contract_deployer_entrypoint.sh /contract-deployer-entrypoint.sh
 
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /contract-deployer-entrypoint.sh
 
 EXPOSE 8000
 

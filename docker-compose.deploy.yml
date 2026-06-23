@@ -36,8 +36,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: hydrigo-contract-deployer
     entrypoint:
-      - sh
-      - -lc
+      - /contract-deployer-entrypoint.sh
     env_file:
       - ./backend/.env
     environment:
@@ -50,13 +49,6 @@ services:
         condition: service_healthy
       chain:
         condition: service_started
-    command: >
-      until python deploy_contract.py; do
-        echo "Retrying contract deployment";
-        sleep 3;
-      done &&
-      mkdir -p /shared/deployments &&
-      cp build/HydrigoAnchor.deploy.json /shared/deployments/HydrigoAnchor.deploy.json
     volumes:
       - hydrigo_shared_deployments:/shared/deployments
     restart: "no"
