@@ -68,7 +68,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      ETH_RPC_URL: http://127.0.0.1:${CHAIN_PORT:-8545}
+      ETH_RPC_URL: http://host.docker.internal:${CHAIN_PORT:-8545}
       ETH_CHAIN_ID: 31337
       HYDRIGO_DB_ENGINE: postgres
       HYDRIGO_PORT: ${HYDRIGO_PORT:-8000}
