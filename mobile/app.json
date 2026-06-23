@@ -50,21 +50,20 @@
         }
       ],
       "expo-font",
-      "expo-web-browser",
-      "./plugins/with-android-cleartext"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "apiBaseUrl": "http://109.110.188.181",
-      "ledgerApiBaseUrl": "http://109.110.188.181",
-      "mqttBrokerUrl": "ws://109.110.188.181/mqtt",
+      "router": {},
+      "apiBaseUrl": "http://109.110.188.181:9000",
+      "ledgerApiBaseUrl": "http://109.110.188.181:9000",
+      "mqttBrokerUrl": "ws://109.110.188.181:9000/mqtt",
       "mqttUsername": "",
       "mqttPassword": "",
       "mqttClientId": "hydrigo-mobile",
-      "router": {},
       "eas": {
         "projectId": "d299d597-6c94-4545-aeec-2af3b6d89679"
       }

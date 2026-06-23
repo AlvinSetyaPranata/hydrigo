@@ -50,7 +50,7 @@ VITE_MQTT_BROKER_URL=wss://domain-anda.com/mqtt
 1. Buat file `.env`
 
 ```env
-APP_PORT=80
+APP_PORT=9000
 API_PORT=3001
 MQTT_PORT=1883
 POSTGRES_PORT=5432
@@ -71,7 +71,7 @@ docker compose up -d --build
 
 3. Akses aplikasi:
 
-- Dashboard: `http://IP-VPS/`
+- Dashboard: `http://IP-VPS:9000/`
 - MQTT sensor topic: `hydrigo/lettuce/sensor`
 - MQTT TCP: `tcp://IP-VPS:1883`
 - MQTT WebSocket via reverse proxy: `ws://IP-VPS/mqtt`
