@@ -46,7 +46,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      ETH_RPC_URL: http://chain:8545
+      ETH_RPC_URL: http://host.docker.internal:${CHAIN_PORT:-8545}
       ETH_CHAIN_ID: 31337
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       CONTRACT_DEPLOYMENT_FILE: /shared/deployments/HydrigoAnchor.deploy.json
@@ -69,7 +69,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      ETH_RPC_URL: http://chain:8545
+      ETH_RPC_URL: http://host.docker.internal:${CHAIN_PORT:-8545}
       ETH_CHAIN_ID: 31337
       HYDRIGO_DB_ENGINE: postgres
       HYDRIGO_PORT: ${HYDRIGO_PORT:-8000}
@@ -92,6 +92,8 @@ services:
     volumes:
       - hydrigo_shared_deployments:/shared/deployments:ro
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   nginx:
     image: nginx:1.27-alpine
