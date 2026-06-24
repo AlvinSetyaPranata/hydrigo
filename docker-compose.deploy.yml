@@ -15,13 +15,16 @@ services:
       - >
         mkdir -p /tmp/pgconfig &&
         cp -R /etc/postgresql/14/main/. /tmp/pgconfig/ &&
+        mkdir -p /var/lib/postgresql/data/pg_stat_tmp &&
         chmod -R a+rX /tmp/pgconfig &&
         exec docker-entrypoint.sh postgres
         -D /var/lib/postgresql/data
         -c config_file=/tmp/pgconfig/postgresql.conf
         -c data_directory=/var/lib/postgresql/data
+        -c port=5432
         -c hba_file=/tmp/pgconfig/pg_hba.conf
         -c ident_file=/tmp/pgconfig/pg_ident.conf
+        -c stats_temp_directory=/var/lib/postgresql/data/pg_stat_tmp
         -c ssl=off
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
