@@ -11,18 +11,18 @@ services:
     entrypoint:
       - /bin/sh
       - -lc
-    command: >
-      mkdir -p /tmp/pgconfig &&
-      cp -R /etc/postgresql/14/main/. /tmp/pgconfig/ &&
-      chmod -R a+rX /tmp/pgconfig &&
-      exec docker-entrypoint.sh
-      postgres
-      -D /var/lib/postgresql/data
-      -c config_file=/tmp/pgconfig/postgresql.conf
-      -c data_directory=/var/lib/postgresql/data
-      -c hba_file=/tmp/pgconfig/pg_hba.conf
-      -c ident_file=/tmp/pgconfig/pg_ident.conf
-      -c ssl=off
+    command:
+      - >
+        mkdir -p /tmp/pgconfig &&
+        cp -R /etc/postgresql/14/main/. /tmp/pgconfig/ &&
+        chmod -R a+rX /tmp/pgconfig &&
+        exec docker-entrypoint.sh postgres
+        -D /var/lib/postgresql/data
+        -c config_file=/tmp/pgconfig/postgresql.conf
+        -c data_directory=/var/lib/postgresql/data
+        -c hba_file=/tmp/pgconfig/pg_hba.conf
+        -c ident_file=/tmp/pgconfig/pg_ident.conf
+        -c ssl=off
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
