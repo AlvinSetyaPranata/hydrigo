@@ -6,6 +6,13 @@ services:
       - ./backend/.env
     volumes:
       - hydrigo_postgres_data:/var/lib/postgresql/data
+      - ./pg-config-restore/mnt/vps/etc/postgresql/14/main:/etc/postgresql/14/main:ro
+    command:
+      - postgres
+      - -D
+      - /var/lib/postgresql/data
+      - -c
+      - config_file=/etc/postgresql/14/main/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
