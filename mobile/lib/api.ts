@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 
-const VPS_BASE_URL = 'http://109.110.188.181:9000';
+const VPS_BASE_URL = 'http://43.156.89.66:9000';
 const HYDROPONICS_API_PREFIX = '/api/hydroponics';
 
 function getExpoExtraString(key: string) {
