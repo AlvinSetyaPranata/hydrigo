@@ -12,7 +12,8 @@ services:
       - /bin/sh
       - -lc
     command: >
-      cp -R /etc/postgresql/14/main /tmp/pgconfig &&
+      mkdir -p /tmp/pgconfig &&
+      cp -R /etc/postgresql/14/main/. /tmp/pgconfig/ &&
       chmod -R a+rX /tmp/pgconfig &&
       exec docker-entrypoint.sh
       postgres
