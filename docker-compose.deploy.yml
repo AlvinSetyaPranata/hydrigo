@@ -15,6 +15,8 @@ services:
       - config_file=/etc/postgresql/14/main/postgresql.conf
       - -c
       - data_directory=/var/lib/postgresql/data
+      - -c
+      - ssl=off
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
