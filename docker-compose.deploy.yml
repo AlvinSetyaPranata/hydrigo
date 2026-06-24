@@ -16,13 +16,13 @@ services:
         mkdir -p /tmp/pgconfig &&
         cp -R /etc/postgresql/14/main/. /tmp/pgconfig/ &&
         mkdir -p /var/lib/postgresql/data/pg_stat_tmp &&
-        cat > /tmp/pgconfig/pg_hba.conf <<'EOF'
-        local   all             all                                     trust
-        host    all             all             127.0.0.1/32            trust
-        host    all             all             ::1/128                 trust
-        host    all             all             0.0.0.0/0               md5
-        host    all             all             ::/0                    md5
-        EOF
+        printf '%s\n' \
+        'local   all             all                                     trust' \
+        'host    all             all             127.0.0.1/32            trust' \
+        'host    all             all             ::1/128                 trust' \
+        'host    all             all             0.0.0.0/0               md5' \
+        'host    all             all             ::/0                    md5' \
+        > /tmp/pgconfig/pg_hba.conf &&
         chmod -R a+rX /tmp/pgconfig &&
         exec docker-entrypoint.sh postgres
         -D /var/lib/postgresql/data
